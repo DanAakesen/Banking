@@ -1,18 +1,32 @@
 # Banking cloud development
 
-Confirmed by Dan on 1 October 2026: private `https://github.com/DanAakesen/Banking` is the single source of truth for every agent and provider. All development uses cloud-hosted compute connected to this repository. Codex Cloud is one option; GitHub Copilot and other agents do not need access to it.
+Confirmed by Dan on 1 October 2026: private `https://github.com/DanAakesen/Banking` is the single source of truth for every agent and provider. All development uses cloud-hosted compute connected to this repository. Codex must always use the Banking Codex Cloud environment (`6abdf572b9088191946caf44f7500f06`) mapped to `DanAakesen/Banking`. GitHub Copilot must use GitHub Copilot cloud agent and its GitHub Actions-powered development environment for this repository. Other providers must use their own cloud-hosted agent environment connected to this repository. Local clients may only coordinate or submit work to the required cloud agent. Local IDE agent mode, local CLI implementation and local app execution are prohibited. If the required cloud environment is unavailable, report the blocker; do not substitute local execution or another environment.
 
 ## Working rules
 
-- Implement, build, test and preview in a cloud-hosted workspace connected to `DanAakesen/Banking`, using the chosen provider. A local editor is acceptable only as a client for remote cloud compute.
+- Implement, build, test and preview in the required provider cloud agent: Banking Codex Cloud for Codex; GitHub Copilot cloud agent for Copilot. Local clients are for coordination/submission only.
 - Retain local checkouts for read-only reference and coordination. Do not edit source, use local launchers, local databases or local development services. If cloud execution or GitHub access is unavailable, report the blocker without a local fallback.
 - The shared deployed production API still owns business logic, integrations, scheduling and separate Dan/shared fictional Demo data. Cloud test fixtures must remain isolated; never fall back to production credentials or data.
 - Production deployment, database migration against production and financial actions require their own explicit authorization.
 - Secrets, environment files, local databases, diagnostic logs, historical browser captures and generated release artifacts are excluded from Git. Configure any subsequently required credentials in the environment's secret controls, with explicit authorization.
 
-## Provider-neutral GitHub workflow
+## Required execution route by provider
 
-1. Verify that the workspace uses cloud compute and its Git remote points to `https://github.com/DanAakesen/Banking`. Read `AGENTS.md`, the project context map and applicable path-specific instructions from the current GitHub branch. Copilot also reads `.github/copilot-instructions.md`; both entrypoints carry the same cloud/GitHub policy.
+| Agent/provider | Required environment |
+|---|---|
+| Codex | Banking Codex Cloud, environment `6abdf572b9088191946caf44f7500f06`, mapped to `DanAakesen/Banking` |
+| GitHub Copilot | GitHub Copilot cloud agent, using its GitHub Actions-powered environment for `DanAakesen/Banking` |
+| Other providers | Their own cloud-hosted agent environment connected to `DanAakesen/Banking` |
+
+A cloud GitHub repository does not make local agent execution cloud execution. Start or submit the task to the required provider cloud agent before implementation. Copilot IDE agent mode and local Codex CLI implementation are prohibited. A local client may coordinate or submit work, but may not replace the required cloud environment with a generic remote VM or another provider's environment.
+
+Instructions cannot move a running local chat to cloud compute. Use a supported cloud dispatch interface when available; otherwise report the required route and blocker. Do not claim a task was dispatched without evidence. Initial migration and guidance corrections through GitHub APIs are bounded coordination exceptions, not local implementation permission.
+
+GitHub Copilot cloud agent readiness for Banking has not been configured or tested here; this routing requirement does not establish readiness. References: [GitHub Copilot cloud agent](https://docs.github.com/en/copilot/concepts/agents/cloud-agent/about-cloud-agent), [Codex Cloud environments](https://learn.chatgpt.com/docs/environments/cloud-environments).
+
+## Shared GitHub workflow
+
+1. Verify that the task runs in the required provider cloud environment and its Git remote points to `https://github.com/DanAakesen/Banking`. Read `AGENTS.md`, the project context map and applicable path-specific instructions from the current GitHub branch. Copilot also reads `.github/copilot-instructions.md`; both entrypoints carry the same cloud/GitHub policy.
 2. Fetch the current GitHub refs before starting or resuming work. Start a task branch from current `origin/main`, or continue the explicitly requested remote branch/PR. Preserve existing changes; do not force-push or reset someone else's work.
 3. Implement and validate in that cloud workspace. The workspace filesystem, caches and published environment are execution state; GitHub is authoritative for code, instructions and durable project decisions.
 4. Review the diff, commit only task-related changes, and push the task branch to GitHub. Open or update a reviewable PR for implementation work. Explicit requests to update the default branch can authorize that narrower workflow. Creating/pushing commits and draft PRs is part of authorized project work; merging and production deployment require their own authorization.
