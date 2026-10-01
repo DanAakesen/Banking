@@ -1,5 +1,9 @@
 # Banking — decisions
 
+## D-AUTO-MERGE — confirmed 1 October 2026
+
+Dan explicitly requires cloud implementation jobs to review and run appropriate required validation, then commit, push and merge into `main` autonomously without another approval. This supersedes earlier approval-before-merge guidance. Preserve other work, fetch current refs, check deployment triggers, and respect required checks and branch protection. Never force-push or bypass protection. Failed/unavailable required checks, denied permissions and product conflicts remain blockers. When PR APIs are unavailable, ordinary non-forced Git merge/push is permitted where direct updates are allowed and checked automation does not deploy. Production deployment and production mutations remain separately authorized and are not implied by merging.
+
 ## D-SAXO-RESPONSE-DELAY — confirmed 1 October 2026
 
 Dan authorized independent per-response feed-delay labels across Markets, Investments and watchlists. Charts use `ChartDelayMinutes`; prices use `QuoteDelayMinutes` (broker portfolio prices retain their own `priceDelayMinutes`). Positive values read “Chart · N min delayed” or “Price · N min delayed”; zero reads “No reported delay”; missing, invalid or negative reads “Delay unknown”. Apply equivalent Danish copy. Never infer a universal 15-minute delay, real-time or executable prices, or feed delay from retrieval age or legacy prose.
