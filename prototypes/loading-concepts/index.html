@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Banking loading concepts (prototype)</title>
+<style>
+:root{--bg:#101315;--surface:#171b1e;--raised:#20262b;--ink:#f3f4f5;--muted:#a8b4c1;--line:#30383e;--accent:#83a7ff;--ai-accent:#c3b4f2;color-scheme:dark;font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:15px}
+:root[data-theme=light]{--bg:#faf9f6;--surface:#f0f0ed;--raised:#e6e9ee;--ink:#202832;--muted:#576371;--line:#d5d9dd;--accent:#244db6;--ai-accent:#68469b;color-scheme:light}
+:root[data-theme=slate]{--bg:#202833;--surface:#273340;--raised:#334352;--ink:#f4f6f8;--muted:#bac8d7;--line:#465667;--accent:#a0c1ff;--ai-accent:#9cdbdf}
+:root[data-theme=sand]{--bg:#f4eee3;--surface:#eae1d3;--raised:#dfd2bf;--ink:#392c20;--muted:#66533f;--line:#cbbda9;--accent:#75430e;--ai-accent:#884c32;color-scheme:light}
+:root[data-theme=forest]{--bg:#101a15;--surface:#18271e;--raised:#21392b;--ink:#edf5ef;--muted:#b1c6b7;--line:#34543f;--accent:#a3d7ac;--ai-accent:#b9dac2}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);line-height:1.5}
+button,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.lab{max-width:1320px;margin:auto;padding:22px clamp(14px,3vw,32px) 32px;display:grid;gap:16px}
+.lab-head h1{font:400 clamp(24px,2.6vw,34px)/1.15 Georgia,serif;letter-spacing:-.03em;margin:0}
+.lab-head p{margin:6px 0 0;color:var(--muted);max-width:820px}
+.controls{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:end}
+.seg{display:inline-flex;flex-wrap:wrap;padding:3px;border:1px solid var(--line);border-radius:999px;background:var(--surface)}
+.seg button{border:0;background:transparent;color:var(--muted);padding:7px 14px;border-radius:999px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--raised);color:var(--ink)}
+.field{display:grid;gap:4px;font-size:.8rem;color:var(--muted)}
+.field select{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:.93rem;color:var(--ink)}
+.check{display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--muted);padding-bottom:8px}
+.btn{background:var(--accent);color:var(--bg);border:0;border-radius:999px;padding:9px 18px;font-weight:600;cursor:pointer}
+.about{color:var(--muted);max-width:980px;margin:0}
+.about strong{color:var(--ink);font-weight:600}
+.frame{position:relative;height:min(620px,calc(100vh - 270px));min-height:470px;border:1px solid var(--line);border-radius:16px;overflow:hidden;display:grid;grid-template-columns:176px 1fr;background:var(--bg)}
+.side{background:var(--surface);padding:18px 12px;display:flex;flex-direction:column;gap:18px}
+.brand{display:flex;align-items:center;gap:10px;font:1.2rem Georgia,serif;letter-spacing:-.03em;padding:0 6px}
+.mark{width:26px;height:26px;display:grid;place-items:center;flex:none}
+.nav{display:grid;gap:2px;list-style:none;margin:0;padding:0}
+.nav button{width:100%;text-align:left;border:0;background:transparent;color:var(--muted);padding:9px 10px;border-radius:10px;cursor:pointer}
+.nav button[aria-current=page]{background:var(--raised);color:var(--ink)}
+.main{position:relative;overflow:hidden}
+.content{height:100%;padding:28px clamp(18px,3vw,36px);view-transition-name:page;transition:opacity .3s ease,filter .3s ease}
+.content.is-stale{opacity:.32;filter:saturate(.5)}
+.content h2{font:400 clamp(24px,2.4vw,32px)/1.2 Georgia,serif;letter-spacing:-.03em;margin:0 0 6px}
+.content p{color:var(--muted);margin:0 0 24px}
+.ph{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+.ph span{display:block;height:150px;border-radius:14px;background:var(--surface)}
+.ph span:nth-child(n+3){height:110px}
+.inline-loader{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;animation:inline-in .28s cubic-bezier(.2,.8,.2,1) both}
+@keyframes inline-in{from{opacity:0;transform:scale(.8);filter:blur(4px)}}
+.boot{position:absolute;inset:0;z-index:10;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;transition:opacity .3s ease}
+.boot.leaving{opacity:0}
+.boot-glyph{display:grid;place-items:center}
+.boot-status{margin:0;min-height:1.6em;color:var(--muted);font-size:.95rem;letter-spacing:.01em}
+.boot-status span{display:inline-block;animation:status-in .55s cubic-bezier(.2,.8,.2,1) both}
+@keyframes status-in{from{opacity:0;filter:blur(6px);transform:translateY(5px)}}
+::view-transition-group(mark){animation-duration:.8s;animation-timing-function:cubic-bezier(.2,.8,.2,1)}
+::view-transition-old(root),::view-transition-new(root){animation-duration:.55s}
+::view-transition-old(page){animation:.26s ease both vt-out}
+::view-transition-new(page){animation:.45s cubic-bezier(.2,.8,.2,1) .05s both vt-in}
+@keyframes vt-out{to{opacity:0;filter:blur(4px);transform:scale(.99)}}
+@keyframes vt-in{from{opacity:0;filter:blur(6px);transform:translateY(10px)}}
+.reduce *,.reduce::view-transition-group(*),.reduce::view-transition-old(*),.reduce::view-transition-new(*){animation:none!important;transition:none!important}
+@media(prefers-reduced-motion:reduce){::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}}
+@media(max-width:700px){
+ .frame{grid-template-columns:1fr;grid-template-rows:auto 1fr;height:auto;min-height:560px}
+ .side{flex-direction:row;align-items:center;padding:10px;gap:10px;overflow-x:auto}
+ .brand span:last-child{display:none}
+ .nav{display:flex}
+ .nav button{white-space:nowrap}
+ .ph{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<main class="lab">
+ <header class="lab-head">
+  <h1>Loading concepts</h1>
+  <p>Prototype for comparison only. Response times are simulated and the mock pages contain no financial data. Each concept plays at startup, then choose a page in the mock sidebar to see the page-change loader.</p>
+ </header>
+ <div class="controls">
+  <div class="seg" role="group" aria-label="Concept" id="concepts"></div>
+  <label class="field">Simulated response time
+   <select id="delay"><option value="150">150 ms (fast)</option><option value="1200">1.2 s</option><option value="3000" selected>3 s</option><option value="8000">8 s (slow startup)</option></select>
+  </label>
+  <label class="field">Theme
+   <select id="theme"><option value="">Graphite</option><option value="light">Light</option><option value="slate">Slate</option><option value="sand">Sand</option><option value="forest">Forest</option></select>
+  </label>
+  <label class="check"><input type="checkbox" id="reduced"> Reduced motion</label>
+  <button class="btn" id="play" type="button">Play startup</button>
+ </div>
+ <p class="about" id="about" aria-live="polite"></p>
+ <div class="frame" id="frame">
+  <aside class="side">
+   <div class="brand"><span class="mark" id="mark"></span><span>Banking</span></div>
+   <ul class="nav" id="nav"></ul>
+  </aside>
+  <section class="main" id="main"><div class="content" id="content"></div></section>
+ </div>
+</main>
+<script src="concepts.js"></script>
+<script src="lab.js"></script>
+</body>
+</html>

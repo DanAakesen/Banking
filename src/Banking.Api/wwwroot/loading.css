@@ -1,0 +1,38 @@
+/* Monogram loader: compact startup layer and page-change glyph. */
+body.startup-loading {overflow:hidden}
+body.startup-loading #app,body.startup-loading #banking-voice-companion,body.startup-loading #banking-advisor-host {visibility:hidden;pointer-events:none}
+.data-loading {position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;padding:24px;background-color:var(--bg);color:var(--ink);transition:background-color .7s ease;isolation:isolate}
+.data-loading.is-leaving {background-color:transparent;pointer-events:none}
+.dl-glyph {display:grid;place-items:center}
+.dl-glyph canvas {display:block}
+.dl-status {margin:0;min-height:1.6em;color:var(--muted);font-size:.95rem;letter-spacing:.01em;text-align:center;transition:opacity .35s ease}
+.data-loading.is-leaving .dl-status {opacity:0}
+.dl-status span {display:inline-block;animation:dl-status-in .55s cubic-bezier(.2,.8,.2,1) both}
+@keyframes dl-status-in {from{opacity:0;filter:blur(6px);transform:translateY(5px)}}
+.dl-sr {position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.main.is-route-loading>:not(.route-loading):not(.page-head):not(.mobile-top) {visibility:hidden}
+.route-glyph {display:grid;place-items:center;animation:dl-route-in .28s cubic-bezier(.2,.8,.2,1) both}
+@keyframes dl-route-in {from{opacity:0;transform:scale(.8);filter:blur(4px)}}
+/* "backwards" fill leaves no transform behind, so fixed/sticky descendants are unaffected afterwards. */
+.main.route-reveal>:not(.route-loading):not(.page-head):not(.mobile-top) {animation:dl-route-reveal .45s cubic-bezier(.2,.8,.2,1) backwards}
+@keyframes dl-route-reveal {from{opacity:0;transform:translateY(10px)}}
+@media(prefers-reduced-motion:reduce){.data-loading,.dl-status{transition:none}.dl-status span,.route-glyph,.main.route-reveal>*{animation:none}}
+/* Brand icon: the settled monogram replaces the wordmark's first letter. The glyph is an alpha mask painted with the theme's accent gradient, sitting on the text baseline at cap height. */
+.brand-sr {position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.brand-mark {position:relative;display:inline-block;height:.7em;aspect-ratio:var(--brand-mark-ratio,.8);margin-right:.015em;vertical-align:baseline}
+.brand-glyph {position:absolute;inset:0;background:linear-gradient(110deg,transparent 42%,rgba(255,255,255,.95) 50%,transparent 58%) 160% 0/300% 100% no-repeat,linear-gradient(150deg,var(--accent),var(--ai-accent));-webkit-mask:var(--brand-mark,linear-gradient(transparent,transparent)) center/100% 100% no-repeat;mask:var(--brand-mark,linear-gradient(transparent,transparent)) center/100% 100% no-repeat;transition:opacity .32s ease-out}
+.brand-rest {display:inline-block}
+.brand-mark:before,.brand-mark:after {content:"";position:absolute;left:50%;top:50%;width:2.2em;height:2.2em;margin:-1.1em 0 0 -1.1em;border-radius:50%;pointer-events:none;opacity:0}
+.brand-mark:before {background:radial-gradient(closest-side,color-mix(in srgb,var(--ai-accent) 55%,transparent),transparent)}
+.brand-mark:after {border:1.5px solid color-mix(in srgb,var(--accent) 80%,transparent)}
+body.brand-landing .brand-glyph,body.brand-landing .brand-rest {opacity:0;transition:none}
+body.brand-landed .brand-glyph {animation:brand-pop .75s cubic-bezier(.3,1.6,.5,1) both,brand-shine .9s ease-in-out .12s both}
+body.brand-landed .brand-mark:before {animation:brand-glow 1.1s ease-out both}
+body.brand-landed .brand-mark:after {animation:brand-ring .9s cubic-bezier(.2,.8,.2,1) .05s both}
+body.brand-landed .brand-rest {animation:brand-rest-in .7s cubic-bezier(.2,.8,.2,1) .12s both}
+@keyframes brand-pop {0%{transform:scale(1.3);filter:brightness(1.7)}100%{transform:none;filter:none}}
+@keyframes brand-shine {from{background-position:160% 0,0 0}to{background-position:-60% 0,0 0}}
+@keyframes brand-glow {0%{opacity:0;transform:scale(.4)}25%{opacity:.9}100%{opacity:0;transform:scale(1.25)}}
+@keyframes brand-ring {0%{opacity:.9;transform:scale(.25)}100%{opacity:0;transform:scale(1.35)}}
+@keyframes brand-rest-in {from{opacity:0;transform:translateX(-.35em);clip-path:inset(0 100% 0 0);filter:blur(3px)}to{opacity:1;transform:none;clip-path:inset(0 0 0 0);filter:none}}
+@media(prefers-reduced-motion:reduce){.brand-glyph{transition:none}body.brand-landed .brand-glyph,body.brand-landed .brand-rest,body.brand-landed .brand-mark:before,body.brand-landed .brand-mark:after{animation:none}}

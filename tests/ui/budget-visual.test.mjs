@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {budgetForecast} from '../../src/Banking.Api/wwwroot/budget-ui.js';
+const actual={from:'2026-09-01',to:'2026-09-18',actualExpenses:29456,monthlyPlan:{expenses:40972.26},sufficientHistory:true};
+const flow={points:Array.from({length:18},(_,i)=>({spending:i===0?29456:0}))};
+test('budget forecast reconciles actual spending, month length and remaining allowance',()=>{const m=budgetForecast(actual,flow);assert.equal(m.days,30);assert.equal(m.left,12);assert.equal(m.points.at(-1),29456);assert.ok(Math.abs(m.remaining-11516.26)<.001);assert.ok(Math.abs(m.projection-49093.333333)<.001)});
+test('missing or inconsistent history cannot produce a projection',()=>{assert.equal(budgetForecast(actual,null).projection,null);assert.equal(budgetForecast({...actual,actualExpenses:1},flow).projection,null);assert.equal(budgetForecast({...actual,sufficientHistory:false},flow).projection,null)});
+test('completed leap-month has no remaining days and no extrapolation',()=>{const m=budgetForecast({...actual,from:'2024-02-01',to:'2024-02-29',actualExpenses:2900},{points:Array.from({length:29},()=>({spending:100}))});assert.equal(m.days,29);assert.equal(m.left,0);assert.equal(m.projection,2900)});
+test('days after the oldest account sync are not drawn as zero spending',()=>{const m=budgetForecast({...actual,oldestSync:'2026-09-12T08:20:00Z'},flow);assert.equal(m.missing,true);assert.equal(m.through,12);assert.equal(m.dataThrough,'2026-09-12');assert.equal(m.points.length,12);assert.ok(Math.abs(m.projection-29456/12*30)<.001)});
+test('a fresh sync keeps the full month and a sync before the month shows no data',()=>{const fresh=budgetForecast({...actual,oldestSync:'2026-09-18T20:00:00Z'},flow);assert.equal(fresh.missing,false);assert.equal(fresh.points.length,18);const none=budgetForecast({...actual,oldestSync:'2026-08-30T10:00:00Z'},flow);assert.equal(none.through,0);assert.equal(none.points.length,0);assert.equal(none.projection,null)});

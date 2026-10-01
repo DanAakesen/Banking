@@ -1,0 +1,508 @@
+/* Border Beam by Jakub Antalik, MIT. Pinned source and license in ../vendor/libraries-dev. */
+
+@property --bw1-overview-ai-dark {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bh1-overview-ai-dark {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bw2-overview-ai-dark {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bh2-overview-ai-dark {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bw3-overview-ai-dark {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bh3-overview-ai-dark {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bgh-overview-ai-dark {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bop-tl-overview-ai-dark {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bop-tr-overview-ai-dark {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bop-bl-overview-ai-dark {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bop-br-overview-ai-dark {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bx1-overview-ai-dark {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --by1-overview-ai-dark {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --bx2-overview-ai-dark {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --by2-overview-ai-dark {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --bx3-overview-ai-dark {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --by3-overview-ai-dark {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --beam-opacity-overview-ai-dark {
+  syntax: "<number>";
+  initial-value: 0;
+  inherits: true;
+}
+
+@property --beam-hue-overview-ai-dark {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: true;
+}
+
+[data-beam="overview-ai-dark"] {
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+[data-beam="overview-ai-dark"][data-active] {
+  animation: beam-fade-in-overview-ai-dark 0.6s ease forwards;
+}
+
+[data-beam="overview-ai-dark"][data-fading] {
+  animation: beam-fade-out-overview-ai-dark 0.5s ease forwards;
+}
+
+[data-beam="overview-ai-dark"][data-active]::after,
+[data-beam="overview-ai-dark"][data-fading]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  padding: 1px;
+  clip-path: inset(0 round 18px);
+  background: radial-gradient(ellipse calc(70px * var(--bw1-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(40px * var(--bh1-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(33% + var(--bx1-overview-ai-dark)) calc(-7.4% + var(--by1-overview-ai-dark)), rgba(255, 50, 100, var(--bop-tl-overview-ai-dark)), transparent),
+    radial-gradient(ellipse calc(60px * var(--bw2-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(35px * var(--bh2-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(12% + var(--bx2-overview-ai-dark)) calc(-5% + var(--by2-overview-ai-dark)), rgba(40, 140, 255, var(--bop-tl-overview-ai-dark)), transparent),
+    radial-gradient(ellipse calc(40px * var(--bw3-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(70px * var(--bh3-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(2.1% + var(--bx3-overview-ai-dark)) calc(68.3% + var(--by3-overview-ai-dark)), rgba(50, 200, 80, var(--bop-bl-overview-ai-dark)), transparent),
+    radial-gradient(ellipse calc(20px * var(--bw1-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(35px * var(--bh1-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(2.1% + var(--bx1-overview-ai-dark)) calc(68.3% + var(--by1-overview-ai-dark)), rgba(30, 185, 170, var(--bop-bl-overview-ai-dark)), transparent),
+    radial-gradient(ellipse calc(180px * var(--bw2-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(32px * var(--bh2-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(74.4% + var(--bx2-overview-ai-dark)) calc(100% + var(--by2-overview-ai-dark)), rgba(100, 70, 255, var(--bop-br-overview-ai-dark)), transparent),
+    radial-gradient(ellipse calc(85px * var(--bw3-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(26px * var(--bh3-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(55% + var(--bx3-overview-ai-dark)) calc(100% + var(--by3-overview-ai-dark)), rgba(40, 140, 255, var(--bop-br-overview-ai-dark)), transparent),
+    radial-gradient(ellipse calc(74px * var(--bw1-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(32px * var(--bh1-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(93.9% + var(--bx1-overview-ai-dark)) calc(0% + var(--by1-overview-ai-dark)), rgba(255, 120, 40, var(--bop-tr-overview-ai-dark)), transparent),
+    radial-gradient(ellipse calc(26px * var(--bw2-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(42px * var(--bh2-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(100% + var(--bx2-overview-ai-dark)) calc(27.1% + var(--by2-overview-ai-dark)), rgba(240, 50, 180, var(--bop-tr-overview-ai-dark)), transparent),
+    radial-gradient(ellipse calc(52px * var(--bw3-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(48px * var(--bh3-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(100% + var(--bx3-overview-ai-dark)) calc(27.1% + var(--by3-overview-ai-dark)), rgba(180, 40, 240, var(--bop-tr-overview-ai-dark)), transparent);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 2;
+  will-change: opacity, filter;
+  opacity: calc(var(--beam-opacity-overview-ai-dark) * 1.54 * var(--beam-stroke-opacity, 1) * var(--beam-strength, 1));
+  filter: hue-rotate(calc(var(--beam-hue-base, 0deg) + var(--beam-hue-overview-ai-dark))) brightness(0.75) saturate(1.20);
+}
+
+[data-beam="overview-ai-dark"][data-active]::before,
+[data-beam="overview-ai-dark"][data-fading]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  clip-path: inset(0 round 18px);
+  background: radial-gradient(ellipse calc(65px * var(--bw1-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(35px * var(--bh1-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(33% + var(--bx1-overview-ai-dark)) calc(-7.4% + var(--by1-overview-ai-dark)), rgba(255, 50, 100, var(--bop-tl-overview-ai-dark)), transparent),
+    radial-gradient(ellipse calc(55px * var(--bw2-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(30px * var(--bh2-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(12% + var(--bx2-overview-ai-dark)) calc(-5% + var(--by2-overview-ai-dark)), rgba(40, 140, 255, var(--bop-tl-overview-ai-dark)), transparent),
+    radial-gradient(ellipse calc(35px * var(--bw3-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(65px * var(--bh3-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(2.1% + var(--bx3-overview-ai-dark)) calc(68.3% + var(--by3-overview-ai-dark)), rgba(50, 200, 80, var(--bop-bl-overview-ai-dark)), transparent),
+    radial-gradient(ellipse calc(15px * var(--bw1-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(30px * var(--bh1-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(2.1% + var(--bx1-overview-ai-dark)) calc(68.3% + var(--by1-overview-ai-dark)), rgba(30, 185, 170, var(--bop-bl-overview-ai-dark)), transparent),
+    radial-gradient(ellipse calc(173px * var(--bw2-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(28px * var(--bh2-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(74.4% + var(--bx2-overview-ai-dark)) calc(100% + var(--by2-overview-ai-dark)), rgba(100, 70, 255, var(--bop-br-overview-ai-dark)), transparent),
+    radial-gradient(ellipse calc(80px * var(--bw3-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(22px * var(--bh3-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(55% + var(--bx3-overview-ai-dark)) calc(100% + var(--by3-overview-ai-dark)), rgba(40, 140, 255, var(--bop-br-overview-ai-dark)), transparent),
+    radial-gradient(ellipse calc(69px * var(--bw1-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(28px * var(--bh1-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(93.9% + var(--bx1-overview-ai-dark)) calc(0% + var(--by1-overview-ai-dark)), rgba(255, 120, 40, var(--bop-tr-overview-ai-dark)), transparent),
+    radial-gradient(ellipse calc(22px * var(--bw2-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(38px * var(--bh2-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(100% + var(--bx2-overview-ai-dark)) calc(27.1% + var(--by2-overview-ai-dark)), rgba(240, 50, 180, var(--bop-tr-overview-ai-dark)), transparent),
+    radial-gradient(ellipse calc(47px * var(--bw3-overview-ai-dark) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(44px * var(--bh3-overview-ai-dark) * var(--bgh-overview-ai-dark) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(100% + var(--bx3-overview-ai-dark)) calc(27.1% + var(--by3-overview-ai-dark)), rgba(180, 40, 240, var(--bop-tr-overview-ai-dark)), transparent),
+    radial-gradient(ellipse 60px 60px at 0% 0%, rgba(255, 255, 255, calc(0.18 * var(--bop-tl-overview-ai-dark))), transparent 70%),
+    radial-gradient(ellipse 60px 60px at 100% 0%, rgba(255, 255, 255, calc(0.18 * var(--bop-tr-overview-ai-dark))), transparent 70%),
+    radial-gradient(ellipse 60px 60px at 0% 100%, rgba(255, 255, 255, calc(0.18 * var(--bop-bl-overview-ai-dark))), transparent 70%),
+    radial-gradient(ellipse 60px 60px at 100% 100%, rgba(255, 255, 255, calc(0.18 * var(--bop-br-overview-ai-dark))), transparent 70%);
+  -webkit-mask-image:
+    linear-gradient(white, transparent 28px, transparent calc(100% - 28px), white),
+    linear-gradient(to right, white, transparent 28px, transparent calc(100% - 28px), white);
+  -webkit-mask-composite: source-over;
+  mask-image:
+    linear-gradient(white, transparent 28px, transparent calc(100% - 28px), white),
+    linear-gradient(to right, white, transparent 28px, transparent calc(100% - 28px), white);
+  mask-composite: add;
+  pointer-events: none;
+  z-index: 1;
+  will-change: opacity, filter;
+  opacity: calc(var(--beam-opacity-overview-ai-dark) * 0.44 * var(--beam-inner-opacity, 1) * var(--beam-strength, 1));
+  filter: hue-rotate(calc(var(--beam-hue-base, 0deg) + var(--beam-hue-overview-ai-dark))) brightness(0.75) saturate(1.20);
+}
+
+[data-beam="overview-ai-dark"] [data-beam-bloom] {
+  display: none;
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  clip-path: inset(0 round 18px);
+  background: radial-gradient(ellipse calc(84px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(48px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 33% -7.4%, rgba(255, 50, 100, 0.76), transparent),
+    radial-gradient(ellipse calc(72px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(42px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 12% -5%, rgba(40, 140, 255, 0.76), transparent),
+    radial-gradient(ellipse calc(48px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(84px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 2.1% 68.3%, rgba(50, 200, 80, 0.76), transparent),
+    radial-gradient(ellipse calc(216px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(38px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 74.4% 100%, rgba(100, 70, 255, 0.76), transparent),
+    radial-gradient(ellipse calc(102px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(31px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 55% 100%, rgba(40, 140, 255, 0.76), transparent),
+    radial-gradient(ellipse calc(89px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(38px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 93.9% 0%, rgba(255, 120, 40, 0.76), transparent),
+    radial-gradient(ellipse calc(62px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(58px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 100% 27.1%, rgba(180, 40, 240, 0.76), transparent);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  padding: 1px;
+  pointer-events: none;
+  z-index: 3;
+  will-change: opacity;
+  opacity: 0;
+}
+
+[data-beam="overview-ai-dark"][data-active] [data-beam-bloom],
+[data-beam="overview-ai-dark"][data-fading] [data-beam-bloom] {
+  display: block;
+  opacity: calc(var(--beam-opacity-overview-ai-dark) * 0.66 * var(--beam-bloom-opacity, 1) * var(--beam-strength, 1));
+  filter: blur(8px) hue-rotate(calc(var(--beam-hue-base, 0deg) + var(--beam-hue-overview-ai-dark))) brightness(0.75) saturate(1.20);
+}
+
+@keyframes beam-fade-in-overview-ai-dark { to { --beam-opacity-overview-ai-dark: 1; } }
+@keyframes beam-fade-out-overview-ai-dark { from { --beam-opacity-overview-ai-dark: 1; } to { --beam-opacity-overview-ai-dark: 0; } }
+
+[data-beam="overview-ai-dark"][data-paused],
+[data-beam="overview-ai-dark"][data-paused]::after,
+[data-beam="overview-ai-dark"][data-paused]::before,
+[data-beam="overview-ai-dark"][data-paused] [data-beam-bloom] {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-beam="overview-ai-dark"][data-active],
+  [data-beam="overview-ai-dark"][data-fading],
+  [data-beam="overview-ai-dark"][data-active]::after,
+  [data-beam="overview-ai-dark"][data-fading]::after,
+  [data-beam="overview-ai-dark"][data-active]::before,
+  [data-beam="overview-ai-dark"][data-fading]::before,
+  [data-beam="overview-ai-dark"][data-active] [data-beam-bloom],
+  [data-beam="overview-ai-dark"][data-fading] [data-beam-bloom] {
+    animation: none !important;
+  }
+}
+
+@property --bw1-overview-ai-light {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bh1-overview-ai-light {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bw2-overview-ai-light {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bh2-overview-ai-light {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bw3-overview-ai-light {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bh3-overview-ai-light {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bgh-overview-ai-light {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bop-tl-overview-ai-light {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bop-tr-overview-ai-light {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bop-bl-overview-ai-light {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bop-br-overview-ai-light {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bx1-overview-ai-light {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --by1-overview-ai-light {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --bx2-overview-ai-light {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --by2-overview-ai-light {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --bx3-overview-ai-light {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --by3-overview-ai-light {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --beam-opacity-overview-ai-light {
+  syntax: "<number>";
+  initial-value: 0;
+  inherits: true;
+}
+
+@property --beam-hue-overview-ai-light {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: true;
+}
+
+[data-beam="overview-ai-light"] {
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+[data-beam="overview-ai-light"][data-active] {
+  animation: beam-fade-in-overview-ai-light 0.6s ease forwards;
+}
+
+[data-beam="overview-ai-light"][data-fading] {
+  animation: beam-fade-out-overview-ai-light 0.5s ease forwards;
+}
+
+[data-beam="overview-ai-light"][data-active]::after,
+[data-beam="overview-ai-light"][data-fading]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  padding: 1px;
+  clip-path: inset(0 round 18px);
+  background: radial-gradient(ellipse calc(70px * var(--bw1-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(40px * var(--bh1-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(33% + var(--bx1-overview-ai-light)) calc(-7.4% + var(--by1-overview-ai-light)), rgba(255, 50, 100, var(--bop-tl-overview-ai-light)), transparent),
+    radial-gradient(ellipse calc(60px * var(--bw2-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(35px * var(--bh2-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(12% + var(--bx2-overview-ai-light)) calc(-5% + var(--by2-overview-ai-light)), rgba(40, 140, 255, var(--bop-tl-overview-ai-light)), transparent),
+    radial-gradient(ellipse calc(40px * var(--bw3-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(70px * var(--bh3-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(2.1% + var(--bx3-overview-ai-light)) calc(68.3% + var(--by3-overview-ai-light)), rgba(50, 200, 80, var(--bop-bl-overview-ai-light)), transparent),
+    radial-gradient(ellipse calc(20px * var(--bw1-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(35px * var(--bh1-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(2.1% + var(--bx1-overview-ai-light)) calc(68.3% + var(--by1-overview-ai-light)), rgba(30, 185, 170, var(--bop-bl-overview-ai-light)), transparent),
+    radial-gradient(ellipse calc(180px * var(--bw2-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(32px * var(--bh2-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(74.4% + var(--bx2-overview-ai-light)) calc(100% + var(--by2-overview-ai-light)), rgba(100, 70, 255, var(--bop-br-overview-ai-light)), transparent),
+    radial-gradient(ellipse calc(85px * var(--bw3-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(26px * var(--bh3-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(55% + var(--bx3-overview-ai-light)) calc(100% + var(--by3-overview-ai-light)), rgba(40, 140, 255, var(--bop-br-overview-ai-light)), transparent),
+    radial-gradient(ellipse calc(74px * var(--bw1-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(32px * var(--bh1-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(93.9% + var(--bx1-overview-ai-light)) calc(0% + var(--by1-overview-ai-light)), rgba(255, 120, 40, var(--bop-tr-overview-ai-light)), transparent),
+    radial-gradient(ellipse calc(26px * var(--bw2-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(42px * var(--bh2-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(100% + var(--bx2-overview-ai-light)) calc(27.1% + var(--by2-overview-ai-light)), rgba(240, 50, 180, var(--bop-tr-overview-ai-light)), transparent),
+    radial-gradient(ellipse calc(52px * var(--bw3-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(48px * var(--bh3-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(100% + var(--bx3-overview-ai-light)) calc(27.1% + var(--by3-overview-ai-light)), rgba(180, 40, 240, var(--bop-tr-overview-ai-light)), transparent);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 2;
+  will-change: opacity, filter;
+  opacity: calc(var(--beam-opacity-overview-ai-light) * 0.32 * var(--beam-stroke-opacity, 1) * var(--beam-strength, 1));
+  filter: hue-rotate(calc(var(--beam-hue-base, 0deg) + var(--beam-hue-overview-ai-light))) brightness(1.30) saturate(0.75);
+}
+
+[data-beam="overview-ai-light"][data-active]::before,
+[data-beam="overview-ai-light"][data-fading]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  clip-path: inset(0 round 18px);
+  background: radial-gradient(ellipse calc(65px * var(--bw1-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(35px * var(--bh1-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(33% + var(--bx1-overview-ai-light)) calc(-7.4% + var(--by1-overview-ai-light)), rgba(255, 50, 100, var(--bop-tl-overview-ai-light)), transparent),
+    radial-gradient(ellipse calc(55px * var(--bw2-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(30px * var(--bh2-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(12% + var(--bx2-overview-ai-light)) calc(-5% + var(--by2-overview-ai-light)), rgba(40, 140, 255, var(--bop-tl-overview-ai-light)), transparent),
+    radial-gradient(ellipse calc(35px * var(--bw3-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(65px * var(--bh3-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(2.1% + var(--bx3-overview-ai-light)) calc(68.3% + var(--by3-overview-ai-light)), rgba(50, 200, 80, var(--bop-bl-overview-ai-light)), transparent),
+    radial-gradient(ellipse calc(15px * var(--bw1-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(30px * var(--bh1-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(2.1% + var(--bx1-overview-ai-light)) calc(68.3% + var(--by1-overview-ai-light)), rgba(30, 185, 170, var(--bop-bl-overview-ai-light)), transparent),
+    radial-gradient(ellipse calc(173px * var(--bw2-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(28px * var(--bh2-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(74.4% + var(--bx2-overview-ai-light)) calc(100% + var(--by2-overview-ai-light)), rgba(100, 70, 255, var(--bop-br-overview-ai-light)), transparent),
+    radial-gradient(ellipse calc(80px * var(--bw3-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(22px * var(--bh3-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(55% + var(--bx3-overview-ai-light)) calc(100% + var(--by3-overview-ai-light)), rgba(40, 140, 255, var(--bop-br-overview-ai-light)), transparent),
+    radial-gradient(ellipse calc(69px * var(--bw1-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(28px * var(--bh1-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(93.9% + var(--bx1-overview-ai-light)) calc(0% + var(--by1-overview-ai-light)), rgba(255, 120, 40, var(--bop-tr-overview-ai-light)), transparent),
+    radial-gradient(ellipse calc(22px * var(--bw2-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(38px * var(--bh2-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(100% + var(--bx2-overview-ai-light)) calc(27.1% + var(--by2-overview-ai-light)), rgba(240, 50, 180, var(--bop-tr-overview-ai-light)), transparent),
+    radial-gradient(ellipse calc(47px * var(--bw3-overview-ai-light) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(44px * var(--bh3-overview-ai-light) * var(--bgh-overview-ai-light) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(100% + var(--bx3-overview-ai-light)) calc(27.1% + var(--by3-overview-ai-light)), rgba(180, 40, 240, var(--bop-tr-overview-ai-light)), transparent),
+    radial-gradient(ellipse 60px 60px at 0% 0%, rgba(0, 0, 0, calc(0.08 * var(--bop-tl-overview-ai-light))), transparent 70%),
+    radial-gradient(ellipse 60px 60px at 100% 0%, rgba(0, 0, 0, calc(0.08 * var(--bop-tr-overview-ai-light))), transparent 70%),
+    radial-gradient(ellipse 60px 60px at 0% 100%, rgba(0, 0, 0, calc(0.08 * var(--bop-bl-overview-ai-light))), transparent 70%),
+    radial-gradient(ellipse 60px 60px at 100% 100%, rgba(0, 0, 0, calc(0.08 * var(--bop-br-overview-ai-light))), transparent 70%);
+  -webkit-mask-image:
+    linear-gradient(white, transparent 28px, transparent calc(100% - 28px), white),
+    linear-gradient(to right, white, transparent 28px, transparent calc(100% - 28px), white);
+  -webkit-mask-composite: source-over;
+  mask-image:
+    linear-gradient(white, transparent 28px, transparent calc(100% - 28px), white),
+    linear-gradient(to right, white, transparent 28px, transparent calc(100% - 28px), white);
+  mask-composite: add;
+  pointer-events: none;
+  z-index: 1;
+  will-change: opacity, filter;
+  opacity: calc(var(--beam-opacity-overview-ai-light) * 0.40 * var(--beam-inner-opacity, 1) * var(--beam-strength, 1));
+  filter: hue-rotate(calc(var(--beam-hue-base, 0deg) + var(--beam-hue-overview-ai-light))) brightness(1.30) saturate(0.75);
+}
+
+[data-beam="overview-ai-light"] [data-beam-bloom] {
+  display: none;
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  clip-path: inset(0 round 18px);
+  background: radial-gradient(ellipse calc(84px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(48px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 33% -7.4%, rgba(255, 50, 100, 0.775), transparent),
+    radial-gradient(ellipse calc(72px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(42px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 12% -5%, rgba(40, 140, 255, 0.775), transparent),
+    radial-gradient(ellipse calc(48px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(84px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 2.1% 68.3%, rgba(50, 200, 80, 0.775), transparent),
+    radial-gradient(ellipse calc(216px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(38px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 74.4% 100%, rgba(100, 70, 255, 0.775), transparent),
+    radial-gradient(ellipse calc(102px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(31px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 55% 100%, rgba(40, 140, 255, 0.775), transparent),
+    radial-gradient(ellipse calc(89px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(38px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 93.9% 0%, rgba(255, 120, 40, 0.775), transparent),
+    radial-gradient(ellipse calc(62px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(58px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 100% 27.1%, rgba(180, 40, 240, 0.775), transparent);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  padding: 1px;
+  pointer-events: none;
+  z-index: 3;
+  will-change: opacity;
+  opacity: 0;
+}
+
+[data-beam="overview-ai-light"][data-active] [data-beam-bloom],
+[data-beam="overview-ai-light"][data-fading] [data-beam-bloom] {
+  display: block;
+  opacity: calc(var(--beam-opacity-overview-ai-light) * 0.80 * var(--beam-bloom-opacity, 1) * var(--beam-strength, 1));
+  filter: blur(8px) hue-rotate(calc(var(--beam-hue-base, 0deg) + var(--beam-hue-overview-ai-light))) brightness(1.30) saturate(0.75);
+}
+
+@keyframes beam-fade-in-overview-ai-light { to { --beam-opacity-overview-ai-light: 1; } }
+@keyframes beam-fade-out-overview-ai-light { from { --beam-opacity-overview-ai-light: 1; } to { --beam-opacity-overview-ai-light: 0; } }
+
+[data-beam="overview-ai-light"][data-paused],
+[data-beam="overview-ai-light"][data-paused]::after,
+[data-beam="overview-ai-light"][data-paused]::before,
+[data-beam="overview-ai-light"][data-paused] [data-beam-bloom] {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-beam="overview-ai-light"][data-active],
+  [data-beam="overview-ai-light"][data-fading],
+  [data-beam="overview-ai-light"][data-active]::after,
+  [data-beam="overview-ai-light"][data-fading]::after,
+  [data-beam="overview-ai-light"][data-active]::before,
+  [data-beam="overview-ai-light"][data-fading]::before,
+  [data-beam="overview-ai-light"][data-active] [data-beam-bloom],
+  [data-beam="overview-ai-light"][data-fading] [data-beam-bloom] {
+    animation: none !important;
+  }
+}
+/* The trusted Banking host opts its shared advisor into these effects. */
+html[data-overview-effects] .composer{border-color:transparent}
+html[data-overview-effects] .composer:focus-within{outline:none;border-color:transparent;box-shadow:var(--chat-shadow)}
+html[data-overview-effects] .composer>textarea,
+html[data-overview-effects] .composer>.composer-actions{position:relative;z-index:4}
+html[data-overview-effects] #voice-live-indicator{display:none!important}
+.overview-orb-status{display:flex;align-items:center;gap:6px;min-width:0;color:var(--ink)}
+.overview-thinking-orb{display:block;width:48px;height:48px;flex:none}
+.overview-orb-label{font-size:12px!important;white-space:nowrap;color:var(--muted)}
+html[data-overview-effects] .composer:has(.overview-orb-status:not([hidden])){flex-wrap:wrap}
+html[data-overview-effects] .composer:has(.overview-orb-status:not([hidden]))>textarea{flex:1 1 100%}
+html[data-overview-effects] .composer:has(.overview-orb-status:not([hidden]))>.composer-actions{width:100%;justify-content:flex-end}
+html[data-overview-effects] .overview-orb-status{margin-right:auto}
+html[data-overview-effects] [data-beam-bloom]{pointer-events:none}
+@media(prefers-reduced-motion:reduce){html[data-overview-effects] .composer{--beam-strength:.5!important}}

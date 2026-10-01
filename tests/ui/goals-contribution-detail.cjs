@@ -1,0 +1,22 @@
+// Pure render checks: no browser, database or banking mutations.
+const assert=require('node:assert/strict');
+const {pathToFileURL}=require('node:url');
+(async()=>{
+ const {createGoalsUI}=await import(pathToFileURL(require('node:path').resolve('src/Banking.Api/wwwroot/goals-ui.js')));
+ const g={id:'goal',name:'Holiday',description:'Family trip',notes:'',references:[],currency:'DKK',target:136000,monthlyContribution:1800,contributionDay:2,planStart:'2026-07-01',deadline:'2029-04-02',version:'1'};
+ const progress={status:'OnTrack',measuredBalance:81400,completionPercent:59.85};
+ const j={from:'2026-07-01',to:'2026-09-09',accountName:'Savings',hasPlan:true,fresh:true,historyComplete:true,closingBalance:81400,openingBalance:76000,deposits:5400,withdrawals:0,shortfall:0,forecastDate:'2029-04-02',months:[7,8,9].map(m=>({month:`2026-0${m}-01`,due:`2026-0${m}-02`,net:1800,planned:1800,withdrawals:0,status:'Received'})),transactions:[],transactionCount:0};
+ const escape=s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+ async function render(goal=g,journey=j,p=progress){let html='';const main={classList:{add(){}},insertAdjacentHTML(_,s){html+=s},querySelectorAll(){return[]},querySelector(){return null}};
+ const ui=createGoalsUI({S:{seq:1,mode:'Demo'},t:s=>s,e:escape,money:n=>n==null?'—':`${n} DKK`,api:async path=>path.endsWith('/progress')?p:journey,post:()=>{throw Error('Unexpected write')},header:()=>'',date:d=>d,locale:()=> 'en-GB',statusName:s=>s,statusClass:()=>'',notice:()=>{},errorText:()=>'',navigate:()=>{},button:()=>'',icon:()=>'<svg></svg>'});await ui.render(main,[goal],goal.id);return html.slice(html.indexOf('<section class="gg-detail"'));}
+ let html=await render();assert.match(html,/Net contributed/);assert.match(html,/2026-10-02/);assert.doesNotMatch(html,/gg-remaining|59.85%/);assert.match(html,/gg-withdrawals negative/);
+ assert.match(html,/Every due month follows the plan/);assert.equal((html.match(/class="gg-month received"/g)||[]).length,3);assert.match(html,/Path to your goal/);assert.match(html,/Goal progress: 59.9%/);assert.match(html,/3\/3 on plan/);assert.match(html,/data-ring="59.85"/);assert.equal((html.match(/gg-ring-tick lit/g)||[]).length,2);assert.match(html,/On time/);assert.match(html,/href="#\/goals\/goal\/edit"/);
+ html=await render({...g,name:'Car',monthlyContribution:2500,target:225000,deadline:'2031-06-02'},{...j,closingBalance:80000,deposits:7500,withdrawals:2500,shortfall:2500,forecastDate:'2031-07-02',withoutShortfallDate:'2031-06-02',delayMonths:1,months:[{...j.months[1],net:0,planned:2500,withdrawals:2500,status:'Missing'}]},{...progress,status:'BehindPlan'});assert.match(html,/2500 DKK.*below your savings plan/s);assert.match(html,/Jul 2031.*\+1 month.*Jun 2031/s);assert.match(html,/2500 DKK.*withdrawn/s);assert.match(html,/>\+5000 DKK<\/dd>/);assert.match(html,/After deadline/);
+ html=await render(g,{...j,hasPlan:false,shortfall:null,forecastDate:null,months:j.months.map(m=>({...m,planned:null,status:'NotDue'}))});assert.doesNotMatch(html,/class="gg-month future"|Every due month follows/);assert.match(html,/Set a savings plan/);
+ html=await render(g,{...j,fresh:false});assert.doesNotMatch(html,/class="gg-month future"|Every due month follows/);assert.match(html,/fresh booked balance/);
+ html=await render(g,{...j,historyComplete:false,deposits:null,withdrawals:null,months:j.months.map(m=>({...m,net:null,status:'Unknown'}))});assert.match(html,/Incomplete history/);assert.doesNotMatch(html,/Every due month follows|gg-month received|Missing contribution|on plan<\/span>/);
+ html=await render(g,{...j,closingBalance:g.target},{...progress,status:'Reached'});assert.doesNotMatch(html,/class="gg-month future"|gg-withdrawals negative/);assert.match(html,/Goal reached/);assert.match(html,/gg-ring reached/);
+ html=await render(g,{...j,to:'2026-09-01',closingBalance:135400});assert.match(html,/datetime="2026-09-02"/);assert.match(html,/>600 DKK<\/strong>/);
+ html=await render({...g,notes:'<img src=x onerror=alert(1)>',references:[{label:'<script>test</script>',url:'https://example.com/?x="'}]});assert.doesNotMatch(html,/<img src=x|<script>/);assert.match(html,/&lt;img/);assert.match(html,/rel="noopener noreferrer"/);
+ console.log('Passed: 8 contribution-detail scenarios (normal, shortfall, no plan, stale, incomplete, reached, next/final payment, escaping).');
+})().catch(err=>{console.error(err);process.exitCode=1});

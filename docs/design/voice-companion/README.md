@@ -1,0 +1,10 @@
+# Persistent voice companion — design previews
+
+13 September 2026. Generated with the built-in Image Gen tool for AI-12. These are two states of one proposed feature, not competing designs. Dan approved both states and requested a thin reddish outline matching the Stop control. The implementation is now available locally; these files remain design references, not implementation screenshots. Financial data and charts in generated mockups are illustrative, not calculation specifications.
+
+- [Mini state](mini-2026-09-13.png): freely draggable waveform capsule, revealed chat/expand/Stop controls and a replacing assistant-only caption limited to two lines.
+- [Expanded state](expanded-2026-09-13.png): the same conversation with minimize/expand, history overlay, assistant response, tool result, generative budget visual, two starters and live voice controls within the composer.
+
+Generation brief: create realistic 1440 × 1024 desktop Banking screens in the existing graphite/periwinkle visual language. Preserve the slim navigation, restrained surfaces, small currency suffixes and absence of colored left borders. Show a Demo budget entry being added while the user remains on the budget page. Keep one voice session across mini and expanded states, a visible drag grip, a thin circular red Stop control and clear expand/minimize affordances. Mini captions display only current assistant speech and replace themselves; full history belongs to the expanded chat. Use the existing Overview and advisor screenshots as style references for the mini image and the resulting mini image as the visual reference for the expanded image. Earlier screenshot controls removed by Dan are not requirements.
+
+Implementation must follow the current app and [roadmap](../../roadmap.md), not introduce incidental background-page features or labels invented by the image generator. Use actual financial calculations and measured audio/session state, preserve themes and provide touch, keyboard and reduced-motion behavior.

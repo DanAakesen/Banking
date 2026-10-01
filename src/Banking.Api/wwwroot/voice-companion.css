@@ -1,0 +1,78 @@
+/* Global overlay: only messages and the composer have surfaces; never a page column. */
+#banking-advisor-host{position:fixed;z-index:80;isolation:isolate;background:transparent;border:0;box-shadow:none;overflow:visible;display:flex;flex-direction:column}
+#banking-advisor-host[hidden],#banking-voice-companion[hidden]{display:none!important}
+#banking-advisor-host>iframe{display:block;width:100%;height:calc(100% - 24px);flex:1;min-height:0;border:0;background:transparent;color-scheme:inherit}
+.advisor-drag{align-self:center;width:64px;height:24px;min-height:24px;padding:0;border:0!important;background:transparent!important;color:var(--accent);font-size:18px;letter-spacing:4px;line-height:1;touch-action:none;cursor:grab;filter:drop-shadow(0 1px 3px var(--bg))}
+.advisor-drag:active{cursor:grabbing}
+#banking-voice-companion{position:fixed;z-index:90;width:164px;height:144px;color:var(--ink);font-size:13px;isolation:isolate}
+.companion-orb{position:absolute;top:8px;left:0;width:112px;height:112px;min-height:0;padding:0!important;border:0!important;border-radius:50%;background:transparent!important;cursor:grab;touch-action:none;overflow:visible}
+.companion-orb:active{cursor:grabbing}.companion-orb canvas{width:112px;height:112px;display:block;filter:drop-shadow(0 0 7px color-mix(in srgb,var(--accent) 65%,transparent)) drop-shadow(0 0 2px var(--bad))}
+/* A pool of reflected light grounds the orb without enclosing it. */
+.companion-orb::after{content:'';position:absolute;pointer-events:none;left:8%;right:8%;bottom:-8px;height:13px;border-radius:50%;background:radial-gradient(ellipse,var(--accent),color-mix(in srgb,var(--accent) 48%,var(--bad)) 30%,transparent 72%);filter:blur(5px);opacity:.7;transform:scaleX(.9);animation:orb-reflection 3.6s ease-in-out infinite}
+@keyframes orb-reflection{50%{transform:scaleX(1.12);opacity:.4}}
+.companion-state{position:absolute;left:0;top:137px;width:112px;text-align:center;font-size:11px;line-height:1.3;color:var(--muted);opacity:1;transition:opacity .18s;pointer-events:none;text-shadow:0 1px 5px var(--bg)}
+.companion-actions{position:absolute;left:116px;top:-20px;width:44px;display:flex;flex-direction:column;gap:7px;padding-left:4px}
+.companion-actions button{display:grid;place-items:center;box-sizing:border-box;width:36px;height:36px;min-height:36px;padding:7px;border:1px solid color-mix(in srgb,var(--accent) 48%,var(--line));border-radius:50%;color:var(--accent);background:color-mix(in srgb,var(--surface) 94%,transparent);backdrop-filter:blur(12px);opacity:0;transform:translate(-20px,24px) scale(.65);pointer-events:none;transition:opacity .18s,transform .28s cubic-bezier(.18,.85,.24,1.2);box-shadow:0 2px 12px #0002}
+.companion-actions button:nth-child(2){transition-delay:35ms}.companion-actions button:nth-child(3){transition-delay:70ms}.companion-actions button:nth-child(4){transition-delay:100ms}
+#banking-voice-companion:is(:hover,:focus-within,.controls-open) .companion-actions button{opacity:1;transform:translate(0) scale(1);pointer-events:auto}
+#banking-voice-companion:is(:hover,:focus-within,.controls-open) .companion-state{opacity:1}
+.companion-actions .companion-stop{border-color:var(--bad);color:var(--bad)}.companion-stop>span{display:block;width:12px;height:12px;background:currentColor;border-radius:3px}
+.companion-icon{display:block;width:19px;height:19px;background:currentColor;mask:var(--companion-icon) center/contain no-repeat}
+.companion-icon-message-circle{--companion-icon:url('/advisor/icons/message-circle.svg')}.companion-icon-captions{--companion-icon:url('/advisor/icons/layout-sidebar-left-expand.svg')}
+.companion-caption{position:absolute;bottom:calc(100% + 32px);padding:10px 14px;background:color-mix(in srgb,var(--surface) 96%,transparent);color:var(--ink);border:1px solid color-mix(in srgb,var(--accent) 42%,var(--line));border-radius:18px;box-shadow:0 5px 18px #0002;backdrop-filter:blur(12px);line-height:1.5;pointer-events:none}
+.companion-caption>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.companion-caption[hidden]{display:none}.caption-below .companion-caption{bottom:auto;top:calc(100% + 28px)}
+.advisor-change-highlight{animation:advisor-highlight 2.4s ease-out}@keyframes advisor-highlight{0%,20%{box-shadow:0 0 0 3px var(--accent)}100%{box-shadow:none}}
+.ov-main-grid.has-floating-advisor,.mk-grid.has-floating-advisor{grid-template-columns:minmax(0,1fr)!important}.has-floating-advisor>.ov-motion,.has-floating-advisor>.mk-content{grid-column:1/-1!important}
+@media(max-width:700px){#banking-advisor-host{max-width:calc(100vw - 24px)}.companion-caption{font-size:13px}}
+@media(prefers-reduced-motion:reduce){.companion-orb::after,.advisor-change-highlight{animation:none}.companion-actions button,.companion-state{transition:none}}
+
+@media(max-width:700px),(pointer:coarse){.companion-actions{top:-24px;gap:6px}.companion-actions button{display:grid;place-items:center;box-sizing:border-box;width:44px;height:44px;min-height:44px}.caption-below .companion-caption{top:calc(100% + 44px)}}
+/* Grip shares the toolbar row just above the composer, independent of chat scrolling. */
+#banking-advisor-host>iframe{height:100%}
+.advisor-drag{position:absolute;left:calc(50% - 32px);bottom:calc(var(--composer-height,120px) - 24px);z-index:2}
+.advisor-drag{left:4px;width:14px;letter-spacing:0;font-size:12px;bottom:calc(var(--composer-height,110px) - 30px);transform:translateX(-12px)}
+
+.advisor-drag{left:auto;right:var(--drag-right,136px);bottom:var(--drag-bottom,66px);width:30px;height:34px;min-height:34px;display:grid;place-items:center;color:var(--ink);line-height:1;letter-spacing:0;transform:none}
+.advisor-grip-icon{width:18px;height:18px;display:block;background:currentColor;mask:url('/advisor/icons/grid-dots.svg') center/contain no-repeat;pointer-events:none}
+/* Hide the floating surfaces until the initial data reveal has completed. */
+body:has(.data-loading) :is(#banking-advisor-host,#banking-voice-companion){visibility:hidden;pointer-events:none}
+/* An idle launcher occupies only its visible button, including at the bottom edge. */
+.is-idle .companion-actions{display:none}
+
+/* The minimized chat keeps the advisor identity visible over every page theme. */
+
+#banking-advisor-host[data-drawer=true] .advisor-drag{visibility:hidden}
+
+/* Optical surfaces live below the transparent same-origin chat frame. */
+#banking-advisor-host>iframe{position:relative;z-index:1}
+.advisor-glass-layer{position:absolute;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.advisor-glass-layer[hidden]{display:none}
+.advisor-glass-pane{position:absolute;pointer-events:none;background:transparent}
+
+/* A quiet window-style resize target follows the composer's left border. */
+.advisor-resize{position:absolute;z-index:3;left:calc(var(--resize-left,12px) - 6px);bottom:calc(var(--resize-bottom,8px) + 8px);width:12px;height:calc(var(--resize-height,58px) - 16px);cursor:ew-resize;touch-action:none;user-select:none;border-radius:8px}
+.advisor-resize::after{content:'';position:absolute;inset:6px 5px;border-radius:2px;background:var(--ai-accent);opacity:0;transition:opacity .15s}
+.advisor-resize:hover::after,.advisor-resize:focus-visible::after,#banking-advisor-host[data-resizing=true] .advisor-resize::after{opacity:.6}
+.advisor-resize:focus-visible{outline:1px solid var(--ai-accent);outline-offset:2px}
+.advisor-resize[hidden],#banking-advisor-host[data-drawer=true] .advisor-resize{display:none}
+#banking-advisor-host[data-resizing=true]{cursor:ew-resize;user-select:none}
+
+@media(prefers-reduced-motion:reduce){.advisor-resize::after{transition:none}}
+
+/* Both minimized states keep the same animated orb, with a solid shaded core. */
+.companion-orb::before{content:'';position:absolute;inset:17%;border-radius:50%;background:radial-gradient(circle at 34% 26%,color-mix(in srgb,var(--ai-accent) 32%,var(--ai-surface)),var(--ai-surface) 76%);box-shadow:0 4px 16px #0006,0 0 12px color-mix(in srgb,var(--ai-accent) 25%,transparent);pointer-events:none}
+.companion-orb canvas{position:relative;z-index:1}
+#banking-voice-companion.is-idle{width:84px;height:112px}
+.is-idle .companion-orb{left:0;top:0;width:84px;height:84px;cursor:grab}
+.is-idle .companion-orb canvas{width:84px;height:84px}
+.is-idle .companion-state{display:block;top:96px;width:84px;white-space:nowrap}
+.companion-unread{position:absolute;right:2px;top:2px;z-index:2;display:grid;place-items:center;width:23px;height:23px;border-radius:50%;background:var(--ai-accent);color:var(--bg);border:2px solid var(--ai-surface);box-shadow:0 2px 7px #0003;pointer-events:none;font-size:13px;font-weight:700}
+.companion-unread:not([data-error=true])::before{content:'';width:12px;height:12px;background:currentColor;mask:url('/advisor/icons/message-circle.svg') center/contain no-repeat}
+.companion-unread[data-error=true]{background:var(--bad)}
+.companion-unread[hidden]{display:none}
+.orb-unavailable .companion-orb::before{border:2px solid var(--ai-accent)}
+.companion-state{color:var(--ink);font-weight:600;text-shadow:0 1px 3px var(--bg),0 0 8px var(--bg)}
+/* The status label sits on its own theme surface so any page content underneath stays legible. */
+#banking-voice-companion .companion-state{left:50%;width:max-content;max-width:160px;transform:translateX(-50%);padding:2px 9px;border-radius:999px;background:color-mix(in srgb,var(--ai-surface) 92%,transparent);border:1px solid color-mix(in srgb,var(--ai-edge) 45%,transparent);box-shadow:0 2px 8px #0000002e;text-shadow:none}
+#banking-voice-companion .companion-state:empty{visibility:hidden}

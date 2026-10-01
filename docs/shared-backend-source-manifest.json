@@ -1,0 +1,153 @@
+{
+  "purpose": "Source review snapshot, not a deployable bundle or proof of deployed provenance",
+  "createdUtc": "2026-09-27T13:34:45.5295482Z",
+  "deploymentApproved": false,
+  "frontendTreesModifiedByThisWork": false,
+  "files": [
+    {
+      "path": "scripts/Start-Frontend.ps1",
+      "state": "present",
+      "sha256": "011e4e75ae16b7943f7ed19b0ca5eb114995a61cd1c0fd94c7fa0949d74c6308"
+    },
+    {
+      "path": "scripts/Start-OverviewAdvisor.ps1",
+      "state": "present",
+      "sha256": "883b12e0949e19682a095caaf752075538b1d9f637c6a2cef95d59ccd41be693"
+    },
+    {
+      "path": "scripts/Start-Backend.ps1",
+      "state": "present",
+      "sha256": "573cd5a7269797581404558f4e071bbbe8eac325558e6413fdc135099832f62f"
+    },
+    {
+      "path": "scripts/Open-Banking.ps1",
+      "state": "present",
+      "sha256": "3c6feda3a210542f3465e98f08f0dce2502019f35ef0cfd0450a845a9d9d29bd"
+    },
+    {
+      "path": "scripts/Test-Backend.ps1",
+      "state": "present",
+      "sha256": "a7d1d46736d01d489fc0465585a1c00d292be717d339ec0b22cd7044468ec513"
+    },
+    {
+      "path": "tools/frontend-host/Program.cs",
+      "state": "present",
+      "sha256": "275304781d1a0b07f2f91029c553a4dd06cfded94d57a296f67d5c41fc454890"
+    },
+    {
+      "path": "tools/frontend-host/FrontendHost.csproj",
+      "state": "present",
+      "sha256": "3c80c66245e059af8adabb6007311cb042afb7a5f5aa66457237b7b437688160"
+    },
+    {
+      "path": "tools/frontend-host/Properties/AssemblyInfo.cs",
+      "state": "present",
+      "sha256": "2828a80badcae6fc787972405e8aa7bb4bc93f447c89695dc8aff3248adb58f2"
+    },
+    {
+      "path": "tools/frontend-host/packages.lock.json",
+      "state": "present",
+      "sha256": "a4364d81a6de2707d66fbced18fbbc926c882ab96e1d1aebbb17e871285b9d75"
+    },
+    {
+      "path": "tools/frontend-host/tests/FrontendHost.Tests/FrontendHost.Tests.csproj",
+      "state": "present",
+      "sha256": "fb5a5fded013c1959c38b027d73d47bf520eb6ea8ba8b6f1a5d0fbb14be9041e"
+    },
+    {
+      "path": "tools/frontend-host/tests/FrontendHost.Tests/TransportTests.cs",
+      "state": "present",
+      "sha256": "0b2caebb45fa6b1fb6151a0ba87bd9709fc8aaa14761cd84a5e1ac6ebe861f97"
+    },
+    {
+      "path": "tools/frontend-host/tests/FrontendHost.Tests/packages.lock.json",
+      "state": "present",
+      "sha256": "da2fed9993e7eaa980f39588607769147ee8135349ae7b609ba35ae3f6fe4fc7"
+    },
+    {
+      "path": "src/Banking.Api/Program.cs",
+      "state": "present",
+      "sha256": "fabe46afe4011a6c214f78b6da25de28dcca68ceda3efa16a917aadd92c020c0"
+    },
+    {
+      "path": "src/Banking.Api/PlanningEndpoints.cs",
+      "state": "present",
+      "sha256": "2b9eac12a28b41384cc73e0c34fbf39cbe40963fcef1f1a033fabf54ddfc7c0b"
+    },
+    {
+      "path": "src/Banking.Api/LocalAdvisorProxy.cs",
+      "state": "present",
+      "sha256": "09b184c536e0f3104d1794cdc58089a508302355a44dd077e5ee0f6cc94fee47"
+    },
+    {
+      "path": "src/Banking.Api/Services/ConnectionService.cs",
+      "state": "present",
+      "sha256": "3e3e5c14bcdd1b334ad384b31b3ce12141c6185da30a35231e38bf3ce282e83b"
+    },
+    {
+      "path": "src/Banking.Api/Security/LocalSecurity.cs",
+      "state": "present",
+      "sha256": "5aa1b287655ca4775d926b9caa8765c08efd2071c6a903b8797b2380677723d9"
+    },
+    {
+      "path": "src/Banking.Api/Security/Workspaces.cs",
+      "state": "present",
+      "sha256": "f027335734754d1f0f852ae6bf6883d40b710803e69a4cf91cfdda368a4e7b0e"
+    },
+    {
+      "path": "src/Banking.Api/Security/SaxoAccess.cs",
+      "state": "present",
+      "sha256": "d86641d8fa9c43a6769aee65cc95c1c6ad3e2038e586147fa12050fdff5682f8"
+    },
+    {
+      "path": "src/Banking.Api/Services/SharedDemoScope.cs",
+      "state": "present",
+      "sha256": "b7799c0b183be4087d4e5566825fe52f2425365bbb06f0a66116ca8cef95beaa"
+    },
+    {
+      "path": "src/Banking.Api/Services/DemoSessions.cs",
+      "state": "removed",
+      "sha256": null
+    },
+    {
+      "path": "prototypes/advisor/server.mjs",
+      "state": "present",
+      "sha256": "cc0276d5a93963dea4042f4f2f9234a40819aa53d526bd7220951429ee5f9a4c"
+    },
+    {
+      "path": "prototypes/advisor/cloud.test.mjs",
+      "state": "present",
+      "sha256": "4f9972f9fc3e8231bccdc8238e0ad4233a0f8d3c2b37ab28eb3350a72fa7f91d"
+    },
+    {
+      "path": "prototypes/advisor/server.test.mjs",
+      "state": "present",
+      "sha256": "5063cc58d29ad6a37396c3162a64b10fbb6681d9d67d2f2fecb31f1bb80d8044"
+    },
+    {
+      "path": "tests/Banking.Tests/CloudTests.cs",
+      "state": "present",
+      "sha256": "7fb6735bc9e5ebdbcc9cbc5d3823c576b3c5a2fe2817f433fe00d234d206ba2c"
+    },
+    {
+      "path": "tests/Banking.Tests/DemoAdvisorCoverageTests.cs",
+      "state": "present",
+      "sha256": "76781d8e15ad1bf479a8566573432b09d4afc7ec1211dd1bf2dd7fb997d1f1c6"
+    },
+    {
+      "path": "tests/Banking.Tests/PublicAccessTests.cs",
+      "state": "present",
+      "sha256": "a8e4cc23fbbb0fe05f0a3e2401390cacd505174782b9cf0cbc2d61a32cbc50a7"
+    },
+    {
+      "path": "tests/Banking.Tests/SaxoOrderTests.cs",
+      "state": "present",
+      "sha256": "543bba1083927fa5a4135ac5a91da249c2922deeb7895ea94dff03e2c69bfb6b"
+    },
+    {
+      "path": "tests/Banking.Tests/LocalAdvisorTests.cs",
+      "state": "present",
+      "sha256": "732d6a65b2b8ae28531b1a72741bcac89893c363b8d644cdc36198ffe305f05f"
+    }
+  ]
+}

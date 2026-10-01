@@ -1,0 +1,32 @@
+**/bin/
+**/obj/
+.vs/
+TestResults/
+.local/
+*.mdf
+*.ldf
+*.bak
+*.pem
+*.pfx
+*.dpapi
+appsettings.Local.json
+.env
+artifacts/
+
+# Machine state, credentials, runtime data and diagnostic captures
+.azure/
+.playwright-mcp/
+**/node_modules/
+**/__pycache__/
+*.log
+.env.*
+!.env.example
+appsettings.*.Local.json
+*.db
+*.db-*
+*.sqlite*
+*.key
+*.p12
+*.publishsettings
+# Historical browser captures may contain owner financial data.
+docs/ui-review/

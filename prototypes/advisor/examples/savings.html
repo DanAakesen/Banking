@@ -1,0 +1,45 @@
+<div class="eyebrow">A what-if exploration · Synthetic family scenario</div>
+<h1>A little more each month.<br>A summer house, sooner.</h1>
+<p class="lede">Explore the effect of an extra contribution. Your existing plan stays unchanged.</p>
+<div class="stats">
+ <div class="stat"><small>Already saved</small><strong class="money" id="balance"></strong></div>
+ <div class="stat"><small>Your target</small><strong class="money" id="target"></strong></div>
+ <div class="stat"><small>Time gained</small><strong class="good" id="gain"></strong></div>
+</div>
+<div class="legend"><span class="baseline">Current plan</span><span>With extra savings</span></div>
+<svg id="chart" class="chart" viewBox="0 0 760 260" role="img" aria-labelledby="chart-title chart-desc"><title id="chart-title">Savings balance over time</title><desc id="chart-desc"></desc></svg>
+<div class="control">
+ <div class="control-head"><label for="extra">Extra savings each month</label><output id="extra-value" for="extra" class="money"></output></div>
+ <input id="extra" type="range" min="0" max="12000" step="500" value="2000">
+ <div class="range-labels"><span>0 DKK</span><span>12,000 DKK available</span></div>
+</div>
+<div class="insight"><span class="dot"></span><div><strong id="forecast"></strong><span class="muted" id="remaining"></span></div></div>
+<p class="assumptions">Starting 12 September 2026. First contribution in October. No interest, price changes or withdrawals. The final contribution is capped at the target. Amounts are synthetic.</p>
+<details><summary>Monthly comparison</summary><table><thead><tr><th>Month</th><th>Current plan · DKK</th><th>Scenario · DKK</th></tr></thead><tbody id="rows"></tbody></table></details>
+<script>
+window.addEventListener('banking:ready', () => {
+ const data = banking.context, goal = data.goal, extra = document.getElementById('extra');
+ const n = value => new Intl.NumberFormat('en-GB', {maximumFractionDigits:0}).format(value);
+ const money = value => n(value) + '<small>DKK</small>';
+ const months = rate => Math.ceil((goal.target - goal.balance) / rate);
+ const date = month => new Intl.DateTimeFormat('en-GB', {month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(Date.UTC(2026,8+month,12)));
+ const initial = banking.state.extra;
+ extra.value = typeof initial === 'number' && Number.isFinite(initial) ? Math.min(data.available, Math.max(0, initial)) : 2000;
+ extra.max = data.available;
+ document.getElementById('balance').innerHTML = money(goal.balance);
+ document.getElementById('target').innerHTML = money(goal.target);
+ function draw() {
+  const add = Number(extra.value), baseMonths = months(goal.monthly), scenarioMonths = months(goal.monthly + add), saved = baseMonths - scenarioMonths;
+  document.getElementById('extra-value').innerHTML = money(add);
+  document.getElementById('gain').textContent = saved + ' months sooner';
+  document.getElementById('forecast').textContent = 'Reach your target in ' + date(scenarioMonths) + ' instead of ' + date(baseMonths) + '.';
+  document.getElementById('remaining').textContent = n(data.available - add) + ' DKK remains available each month after the extra saving.';
+  const width = Math.max(270, Math.min(760, document.body.clientWidth - 60)), right = width - 12; document.getElementById('chart').setAttribute('viewBox', `0 0 ${width} 260`); const x = m => 48 + (m/baseMonths)*(right-48), y = value => 222 - value / goal.target * 192;
+  const line = rate => Array.from({length:baseMonths+1}, (_,m) => `${m?'L':'M'}${x(m)},${y(Math.min(goal.target,goal.balance+m*rate))}`).join(' ');
+  const grid = [0,200000,400000].map(v => `<line x1="48" y1="${y(v)}" x2="${right}" y2="${y(v)}" stroke="var(--line)"/><text x="40" y="${y(v)+4}" text-anchor="end" font-size="12">${n(v/1000)}k</text>`).join('');
+  document.getElementById('chart').innerHTML = `<title id="chart-title">Savings balance over time, DKK</title><desc id="chart-desc">The current plan reaches ${n(goal.target)} DKK in ${baseMonths} months; this scenario takes ${scenarioMonths} months.</desc>${grid}<text x="48" y="16" font-size="11">DKK</text><path d="${line(goal.monthly+add)} L${right},222 L48,222Z" fill="var(--accent)" opacity=".08"/><path d="${line(goal.monthly)}" fill="none" stroke="var(--muted)" stroke-dasharray="5 5" stroke-width="2"/><path d="${line(goal.monthly+add)}" fill="none" stroke="var(--accent)" stroke-width="3"/><circle cx="${x(scenarioMonths)}" cy="${y(goal.target)}" r="6" fill="var(--accent)"/><text x="48" y="248" font-size="12">${date(0)}</text><text x="${(48+right)/2}" y="248" text-anchor="middle" font-size="12">${date(Math.round(baseMonths/2))}</text><text x="${right}" y="248" text-anchor="end" font-size="12">${date(baseMonths)}</text>`;
+  document.getElementById('rows').innerHTML = Array.from({length:baseMonths+1}, (_,m) => `<tr><td>${date(m)}</td><td>${n(Math.min(goal.target,goal.balance+m*goal.monthly))}</td><td>${n(Math.min(goal.target,goal.balance+m*(goal.monthly+add)))}</td></tr>`).join('');
+ }
+ extra.addEventListener('input', () => { draw(); banking.updateState({extra:Number(extra.value)}); }); window.addEventListener('resize', draw); draw();
+});
+</script>

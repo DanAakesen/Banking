@@ -1,0 +1,21 @@
+<h1>Renderer boundary probe</h1><p>Synthetic test artifact. No financial data.</p><pre id="results">Running…</pre><button id="navigate">Test self-navigation</button><button id="flood">Test excessive updates</button>
+<script>
+window.addEventListener('banking:ready',async()=>{
+ const result={};const blocked=(key,fn)=>{try{fn();result[key]=false;}catch{result[key]=true;}};
+ blocked('parent DOM blocked',()=>parent.document.body.textContent);
+ blocked('cookies blocked',()=>document.cookie);
+ blocked('storage blocked',()=>localStorage.getItem('anything'));
+ blocked('top navigation blocked',()=>{top.location.href='http://127.0.0.1:5772/top';});
+ result['popups blocked']=window.open('http://127.0.0.1:5772/popup')===null;
+ try{await fetch('http://127.0.0.1:5772/fetch');result['network blocked']=false;}catch{result['network blocked']=true;}
+ try{await banking.request('read_live_accounts');result['unauthorized tool blocked']=false;}catch{result['unauthorized tool blocked']=true;}
+ const data=await banking.request('read_demo_context');result['only synthetic data returned']=data.source.startsWith('Synthetic')&&data.income===54000;
+ const image=new Image();image.src='http://127.0.0.1:5772/image';document.body.append(image);
+ const script=document.createElement('script');script.src='http://127.0.0.1:5772/script';document.body.append(script);
+ const nested=document.createElement('iframe');nested.src='http://127.0.0.1:5772/frame';document.body.append(nested);
+ parent.postMessage({type:'state',state:{hacked:true}},'*');
+ document.getElementById('results').textContent=JSON.stringify(result,null,2);
+ document.getElementById('navigate').onclick=()=>location.href='http://127.0.0.1:5772/navigation';
+ document.getElementById('flood').onclick=()=>{for(let i=0;i<120;i++)banking.updateState({i});};
+});
+</script>

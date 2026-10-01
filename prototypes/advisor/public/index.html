@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en" data-theme="graphite">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Banking · AI Bank Advisor</title><link rel="stylesheet" href="./theme.css"><link rel="stylesheet" href="./styles.css"><link rel="stylesheet" href="./overview-effects.css"><script type="module" src="./app.js"></script></head>
+<body>
+ <a class="skip" href="#advisor-prompt">Skip to conversation</a>
+ <header class="top"><a class="brand" href="/">Banking</a><span class="prototype-label">Demo · Advisor preview</span><button id="settings" class="icon-button" aria-label="Settings" title="Settings"><span class="icon settings-icon"></span></button></header>
+ <dialog id="advisor-shell" class="advisor-shell" open aria-labelledby="advisor-title">
+  <header class="advisor-heading"><h2 id="advisor-title">AI Bank Advisor</h2><div class="heading-actions"><button id="new-chat" class="icon-button" aria-label="New chat" title="New chat"><span class="icon plus-icon"></span></button><button id="minimize-advisor" class="icon-button" aria-label="Minimize chat" title="Minimize chat · voice continues" hidden><span aria-hidden="true">−</span></button><button id="toggle-chats" class="icon-button" aria-label="Open chats" title="Open chats" aria-expanded="false" aria-controls="chat-sidebar"><span class="icon sidebar-icon"></span></button></div></header>
+  <div class="advisor-body" id="workspace">
+   <aside id="chat-sidebar" class="chat-sidebar" role="dialog" aria-label="AI workspace" hidden>
+    <header class="workspace-heading"><h2>AI workspace</h2><button id="close-drawer" class="icon-button" aria-label="Close AI workspace" title="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
+    <div class="workspace-body">
+     <nav class="workspace-nav" aria-label="AI workspace sections">
+      <button data-drawer-view="chats" aria-controls="drawer-chats" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 1-8 8H4l-2 3V11a9 9 0 0 1 18 0Z"/></svg>Chats</button>
+      <button data-drawer-view="analyses" aria-controls="drawer-analyses"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16h16M8 15l4-5 4 3 4-7"/></svg>Analyses</button>
+      <button data-drawer-view="memories" aria-controls="drawer-memories"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><circle cx="19" cy="18" r="3"/><path d="m10 8-4 7m8-7 4 7M8 18h8"/></svg>Memories</button>
+      <button data-drawer-view="usage" aria-controls="drawer-usage"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10m7 10V4m7 16V7"/></svg>Usage</button>
+     </nav>
+     <div class="workspace-content">
+      <section id="drawer-chats" data-drawer-panel="chats" aria-label="Chats"><div class="workspace-section-heading"><h3>Chats</h3><span id="chat-count"></span></div><div class="workspace-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><label class="sr-only" for="chat-search">Search chats</label><input id="chat-search" type="search" placeholder="Search chats…"></div><div id="chats"></div></section>
+      <section id="drawer-analyses" data-drawer-panel="analyses" aria-label="Analyses" hidden><div class="workspace-section-heading"><h3>Analyses</h3><span id="analysis-count">0 saved</span></div><div id="library"></div><div id="history" hidden><h3>Versions</h3><div id="revisions"></div></div><button id="import" class="import-button">Bring your own artifact</button></section>
+      <section id="drawer-memories" data-drawer-panel="memories" aria-label="Memories" hidden><div class="workspace-section-heading"><h3>Memories</h3></div><div id="advisor-memory"></div></section>
+      <section id="drawer-usage" data-drawer-panel="usage" aria-label="Usage" hidden><div class="workspace-section-heading"><h3>Usage today</h3></div><div id="advisor-usage" aria-live="polite"></div></section>
+     </div>
+    </div>
+   </aside>
+   <button id="drawer-shade" class="drawer-shade" aria-label="Dismiss chat history" hidden></button>
+   <section class="active-conversation" aria-label="Active conversation">
+    <div class="conversation-scroll" id="conversation-scroll">
+     <div class="conversation-intro"><h3 id="conversation-title">What would you like to explore?</h3></div>
+     <div id="messages" class="messages" role="log" aria-label="Conversation"></div>
+     <div class="message assistant run-progress"><p id="agent-progress" class="message-content" role="status" aria-live="polite"></p></div>
+     <details id="advisor-activity" class="advisor-activity" hidden><summary><span id="activity-title" role="status" aria-live="polite">Activity</span><span class="activity-arrow" aria-hidden="true">&gt;</span></summary><ol id="activity-events" aria-label="Advisor actions"></ol></details>
+     <section class="canvas-panel" id="canvas" tabindex="-1" aria-label="Generated analysis" hidden>
+      <div class="canvas-toolbar"><div><h2 id="artifact-title"></h2></div><div class="canvas-actions"><button id="stop" hidden>Stop preview</button></div></div>
+      <section id="verified-scenario" class="verified-scenario" hidden aria-label="Verified scenario"><h3>Scenario checked by Banking</h3><p id="scenario-figures"></p><p id="scenario-explanation" class="footnote"></p></section>
+      <div id="stage"></div>
+      <div class="fallback" id="fallback" hidden><p id="fallback-text"></p></div>
+     </section>
+
+    </div>
+    <footer class="composer-footer">
+     <p id="voice-status" class="sr-only" role="status"></p>
+     <div id="starters" class="starters" aria-label="Conversation starters"><button data-prompt="Could I reach the summer house goal sooner?">Reach my goal sooner<span class="icon external-icon"></span></button><button data-prompt="Where could I make more room in my monthly budget?">Find room in my month<span class="icon external-icon"></span></button></div>
+     <form id="prompt-form" class="prompt-form"><div class="composer"><textarea id="advisor-prompt" aria-label="Message your advisor" rows="1" required maxlength="4000" placeholder="Ask your advisor…"></textarea><div class="composer-actions"><span id="voice-live-indicator" class="voice-live-indicator" hidden><span class="live-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span id="voice-phase"></span></span><button type="button" id="voice-start" class="icon-button" aria-label="Start voice" title="Start voice"><span class="voice-glyph" aria-hidden="true"><span class="icon waveform-icon"></span><span class="voice-light"></span></span></button><button id="ask-advisor" class="icon-button" aria-label="Send message" title="Send message"><span class="icon send-icon"></span></button></div></div><input id="follow-up" type="checkbox" hidden></form>
+     <small id="ai-connection" hidden></small>
+     <audio id="voice-audio" autoplay hidden></audio>
+     <div id="voice-test" hidden><p class="footnote">Developer test: synthetic audio</p><button id="voice-test-play" disabled>Play test recording</button><p id="voice-test-result"></p></div>
+     <div hidden><div id="voice-transcript"></div><ul id="voice-tools"></ul><button id="first-example">Ask advisor</button></div>
+     <p id="status" class="status" role="status" aria-live="polite"></p>
+    </footer>
+   </section>
+  </div>
+ </dialog>
+ <dialog id="settings-dialog" aria-labelledby="settings-title"><form method="dialog"><div class="dialog-head"><h2 id="settings-title">Settings</h2><button aria-label="Close settings">✕</button></div></form><p class="muted">The canvas and its artifacts share your theme.</p><div id="themes" class="themes"></div><p class="footnote">The advisor follows your Banking language setting.</p></dialog>
+ <dialog id="import-dialog" aria-labelledby="import-title"><form id="import-form"><div class="dialog-head"><h2 id="import-title">Bring your own artifact</h2><button type="button" id="close-import" aria-label="Close import">✕</button></div><p class="muted">Paste a complete HTML/JavaScript response or Markdown. Use synthetic data only.</p><label for="import-name">Analysis name</label><input id="import-name" required maxlength="100" placeholder="An idea worth exploring"><fieldset><legend>Format</legend><label><input type="radio" name="format" value="html" checked> HTML + CSS + JavaScript</label><label><input type="radio" name="format" value="markdown"> Markdown</label></fieldset><label for="import-content">Content</label><textarea id="import-content" required maxlength="100000" spellcheck="false" placeholder="Paste your artifact here…"></textarea><label for="import-fallback">Readable summary</label><textarea id="import-fallback" required maxlength="2000" placeholder="What should someone know if the artifact cannot run?"></textarea><p class="footnote">Self-contained artifacts only. External scripts, images, network requests and Banking credentials are unavailable.</p><p id="import-error" role="alert"></p><button class="primary" id="import-submit">Open and save analysis</button></form></dialog>
+ <dialog id="discard-dialog" aria-labelledby="discard-title"><h2 id="discard-title">Keep this version?</h2><p>You have changes in this analysis that haven’t been saved.</p><div class="dialog-actions"><button id="keep-editing">Keep exploring</button><button id="discard-changes">Discard changes</button><button id="save-continue" class="primary">Save and continue</button></div></dialog>
+</body></html>

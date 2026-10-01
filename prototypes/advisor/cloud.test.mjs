@@ -1,0 +1,67 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {mkdtemp,rm} from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {startPrototype} from './server.mjs';
+
+test('cloud advisor isolates visitor memories and serves sandboxed render URLs',async()=>{
+ process.env.BANKING_PUBLIC_ORIGIN='https://banking.example';
+ const storageRoot=await mkdtemp(path.join(os.tmpdir(),'banking-cloud-test-'));
+ const server=await startPrototype({port:5680,renderPort:5681,storageRoot,aiConfigured:false,goalReader:async(s,mode)=>({source:'Banking',mode,goalContext:{goals:[]}})});
+ const demoScope=session=>createHash('sha256').update(session).digest('hex');
+ const request=async(scope,route,data,mode='Demo',session='test-session-'+scope)=>{
+  const res=await fetch(server.origin+'/api/'+route,{method:data?'POST':'GET',headers:{Origin:'https://banking.example','Content-Type':'application/json','X-Banking-Session':session,'X-Banking-Mode':mode,'X-Banking-Scope':scope,Cookie:'banking_advisor_demo='+'c'.repeat(64)},body:data?JSON.stringify(data):undefined});
+  return {status:res.status,data:await res.json()};
+ };
+ try{
+  const sessionA='shared-bank-session',sessionB='visitor-b-session',sessionOwner='owner-bank-session';
+  const a=demoScope(sessionA),b=demoScope(sessionB);
+  assert.equal((await request('', 'workspace')).status,401);
+  const workspaceA=await request(a,'workspace',undefined,'Demo',sessionA),workspaceB=await request(b,'workspace',undefined,'Demo',sessionB);
+  assert.equal(workspaceA.data.renderer,'/advisor-render');
+  assert.equal(workspaceB.data.renderer,'/advisor-render');
+  assert.equal((await request(a,'memory/save',{text:'Keep a household buffer.'},'Demo',sessionA)).status,200);
+  assert.equal((await request(a,'memory',undefined,'Demo',sessionA)).data.preferences.length,1);
+  assert.equal((await request(b,'memory')).data.preferences.length,0);
+  const artifact={title:'Private advisor analysis',format:'markdown',content:'# Private to A',fallback:'Private to A'};
+  assert.equal((await request(a,'artifacts',artifact,'Demo',sessionA)).status,200);
+  assert.equal((await request(a,'workspace',undefined,'Demo',sessionA)).data.artifacts.length,1);
+  assert.equal((await request(b,'workspace')).data.artifacts.length,0);
+  assert.equal((await request('owner-live','memory',undefined,'Live',sessionOwner)).data.preferences.length,0);
+  assert.equal((await request('owner-live','memory/save',{text:'Dan private priority.'},'Live',sessionOwner)).status,200);
+  assert.equal((await request('owner-live','memory',undefined,'Live',sessionOwner)).data.preferences.length,1);
+  assert.equal((await request(a,'memory',undefined,'Demo',sessionA)).data.preferences.length,1);
+  assert.equal((await request('owner-live','workspace',undefined,'Live',sessionOwner)).data.artifacts.length,0);
+  const render=await request(a,'render',{title:'Test',format:'html',content:'<p>Safe isolated preview</p>',fallback:'Test',state:{}},'Demo',sessionA);
+  assert.match(render.data.url,/^\/advisor-render\/artifact\/[a-f0-9]{64}\?mode=Demo$/);
+  const artifactUrl=new URL(render.data.url,'https://banking.example');
+  const framePath=artifactUrl.pathname.replace(/^\/advisor-render/,'');
+  const artifactPath=framePath+artifactUrl.search;
+  const renderHeaders={'X-Banking-Session':sessionA,'X-Banking-Mode':'Demo','X-Banking-Scope':a};
+  const preview=await fetch(`http://127.0.0.1:5681${artifactPath}`,{headers:renderHeaders});
+  assert.equal(preview.status,200);
+  const missingIdentity=await fetch(`http://127.0.0.1:5681${artifactPath}`);
+  assert.equal(missingIdentity.status,404);
+  const visitorB=await fetch(`http://127.0.0.1:5681${artifactPath}`,{headers:{'X-Banking-Session':sessionB,'X-Banking-Mode':'Demo','X-Banking-Scope':b}});
+  assert.equal(visitorB.status,404);
+  const missingMode=await fetch(`http://127.0.0.1:5681${framePath}`,{headers:renderHeaders});
+  assert.equal(missingMode.status,404);
+  const crossMode=await fetch(`http://127.0.0.1:5681${framePath}?mode=Live`,{headers:{'X-Banking-Session':sessionA,'X-Banking-Mode':'Live','X-Banking-Scope':'owner-live'}});
+  assert.equal(crossMode.status,404);
+  const liveRender=await request('owner-live','render',{title:'Owner preview',format:'html',content:'<p>Owner private</p>',fallback:'Owner private',state:{}},'Live',sessionOwner);
+  const liveUrl=new URL(liveRender.data.url,'https://banking.example');
+  const liveFramePath=liveUrl.pathname.replace(/^\/advisor-render/,'');
+  const livePreview=await fetch(`http://127.0.0.1:5681${liveFramePath+liveUrl.search}`,{headers:{'X-Banking-Session':sessionOwner,'X-Banking-Mode':'Live','X-Banking-Scope':'owner-live'}});
+  assert.equal(livePreview.status,200);
+  assert.match(preview.headers.get('content-security-policy'),/sandbox allow-scripts/);
+  assert.match(preview.headers.get('content-security-policy'),/connect-src 'none'/);
+  assert.match(preview.headers.get('content-security-policy'),/frame-ancestors 'self'/);
+  assert.doesNotMatch(preview.headers.get('content-security-policy'),/127\.0\.0\.1:5680/);
+  assert.match(await preview.text(),/new URL\(location\.href\)\.origin/);
+  const composer=await fetch(server.origin+'/');
+  assert.match(composer.headers.get('content-security-policy'),/frame-src 'self'/);
+  assert.doesNotMatch(composer.headers.get('content-security-policy'),/127\.0\.0\.1:5680/);
+}finally{await server.close();delete process.env.BANKING_PUBLIC_ORIGIN;await rm(storageRoot,{recursive:true,force:true});}
+});

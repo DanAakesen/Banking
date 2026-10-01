@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-theme="graphite">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Markets redesign concepts (prototype)</title>
+<link rel="stylesheet" href="concepts.css">
+</head>
+<body>
+<header class="lab" aria-label="Concept controls">
+  <strong class="lab-name">Markets concepts</strong>
+  <div class="lab-seg" role="group" aria-label="Concept">
+    <button data-concept="1">1 · Trading desk</button>
+    <button data-concept="2">2 · Portfolio canvas</button>
+    <button data-concept="3">3 · Focus flow</button>
+  </div>
+  <label class="lab-field">Theme
+    <select id="lab-theme"><option value="graphite">Graphite</option><option value="light">Light</option><option value="sand">Sand</option></select>
+  </label>
+  <label class="lab-check"><input type="checkbox" id="lab-ticks" checked> Simulated ticks</label>
+  <span class="lab-note">Prototype · illustrative sample prices · not connected to Saxo</span>
+</header>
+<div class="app">
+  <nav class="side" aria-label="Main">
+    <div class="brand">Banking</div>
+    <a href="#">360</a><a href="#">Accounts</a><a href="#">Review</a><a href="#">Budgets</a><a href="#">Goals</a><a href="#">Advisor</a>
+    <span class="side-group">Wealth</span><a href="#">Investments</a><a href="#">Pension</a><a href="#" aria-current="page">Markets</a>
+    <span class="side-group">Debt</span><a href="#">Loans</a>
+    <span class="side-group">AI workspace</span><a href="#">Analysis</a><a href="#">Memory</a>
+  </nav>
+  <main class="main" id="main"></main>
+  <nav class="bottom-nav" aria-label="Main"><a href="#">360</a><a href="#">Accounts</a><a href="#">Review</a><a href="#" aria-current="page">Markets</a></nav>
+</div>
+<div id="overlay-root"></div>
+<script src="../../src/Banking.Api/wwwroot/vendor/lightweight-charts-5.2.0.js"></script>
+<script src="data.js"></script>
+<script src="concepts.js"></script>
+</body>
+</html>

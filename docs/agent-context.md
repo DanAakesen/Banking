@@ -1,0 +1,238 @@
+## Cloud-only development — confirmed 1 October 2026
+
+Dan requested migration to a private GitHub repository, cloud-only development instructions, and a Codex cloud environment mapped to that repository. All future coding, builds, tests and previews run in Codex cloud; the local PC is for read-only coordination/reference. This supersedes local-development permissions and launcher recommendations below. See [cloud development](cloud-development.md) for setup and validation. The shared deployed API and separate Dan/shared fictional Demo data remain the runtime architecture. Cloud test fixtures must remain isolated from production. Deployment and production writes require their own explicit authorization.
+
+## Current architecture decision — 27 September 2026
+
+Saxo/Investments sequence confirmed on 27 September 2026: [four-step delivery plan](saxo-investments-plan.md). Start with guarded SIM access through the shared backend, then approved test positions, reconciliation, and three data-backed UI concepts. Step 1 implementation is authorized; no concrete trade or deployment is authorized by that step. Pension is parked. Read this plan for Saxo work; it supersedes older Development-only Saxo order assumptions when the new release is deployed.
+
+Dan confirmed one Banking app: local frontend development and the Azure frontend both use the same deployed production API, advisor and integrations, backed by separate Dan and shared fictional Demo data. No local app database, local business backend/advisor service, direct SQL connection or local scheduler in the normal launcher. Read [implementation plan and agent handoffs](shared-production-backend-plan.md) before runtime, authentication, workspace, startup or deployment work.
+
+Status: full current application deployed on 27 September 2026 with explicit user authorization. Azure exposes contract v1 and build 2026.09.27-shared-backend. The frontend-only host is active on localhost:5444, verified against Azure with matching accounts and bidirectional Demo edits; it starts no local SQL or advisor. Automatic approval review blocked stopping the legacy 5443/5450 processes, so those remain unchanged. Use `scripts/Start-Frontend.ps1` for normal startup after the chosen port is free. See [execution evidence](shared-backend-execution.md). Owner sign-in, microphone and provider acceptance remain open. Dan is editing page/loading UI concurrently: protect both frontend trees and coordinate any shared edits or runtime interruption. The new decision supersedes older local-first runtime and per-visitor disposable Demo financial-copy guidance below. It does not delete local databases or permit unreviewed production deployments. Backend tests may retain isolated disposable stores; these must never become the app's fallback. New static frontend paths must be registered in both the development host allowlist (`tools/frontend-host/Program.cs`) and the cloud static allowlist (`Security/LocalSecurity.cs`); existing asset contents are served from the local files.
+
+Latest local pass (26 September 2026): frontend rules enforced — no single-side borders (lists use tonal striping) and one clear title per page; the shared `header()` no longer takes a subtitle. Voice/text answers now verify every monetary amount against the supplied records and flag or correct unverified spoken figures; see "Voice figure verification" in [advisor-app-coverage.md](advisor-app-coverage.md). No deployment.
+
+Latest local UI pass (25 September 2026): Dan approved 18 UI refinements (Light/Sand budget readability, forecast data-end, category icons, Budgets wording/precision, remembered minimized chat, Saxo signed-out state, goal defaults, theme previews and more). See the dated section in [DESIGN.md](../DESIGN.md) and UI-REFINE in [production-test-plan.md](production-test-plan.md). `scripts/Start-OverviewAdvisor.ps1` no longer passes `Local:DisableWorker=true`; with Enable Banking disabled the worker only refreshes the fictional Demo workspace. New static files must be added to the asset allow-list in `Security/LocalSecurity.cs` before they load. No deployment.
+
+Latest local increment (13 September 2026): automatic memory runs after ended conversation segments (voice cleanup, new/switched chat, text idle 10 minutes), with exact-source explicit memories, reviewable inferences, pause/retry and a separate daily cap. Spoken voice-close is implemented but intentionally untested at Dan's request. ErTasselli/OpenTerminal is identified and parked pending practical feed verification. See [automatic memory](automatic-memory.md). No deployment.
+
+Latest increment (12 September 2026): the local text/voice advisor reads the authenticated workspace's saved goals, all budget entries, categories, account savings balances, actual financial results and paginated transactions. On an explicit request it can append income, expense or savings budget entries through the existing form validation and concurrency checks. This supersedes earlier synthetic-only/read-only advisor restrictions for these operations. Bank sync stays disabled and Azure is unchanged. See [local integration](local-overview-advisor.md).
+
+# Banking — agent context
+
+## AI workspace — 13 September 2026
+
+Dan authorized planning, one design image for each page, then building both locally without pausing for image approval. Memory and Analysis now live under AI workspace in navigation. Read [plan and evidence](ai-workspace-plan.md) before further changes. Memory has a real editable graph, persistent positions, explicit relationships and reviewable AI provenance. Analysis has a persistent local library and current-data refresh that preserves immutable older runs. Both use the existing authenticated local advisor and isolated renderer. Production deployment remains deferred; maintain NEXT-01–04 in the production-only acceptance script. Earlier AI-14/15 backlog-only notes are superseded within this scope.
+
+## Ongoing acceptance-test maintenance — 13 September 2026
+
+Dan requested a production test document and that it be maintained as features are built. Update [production-test-plan.md](production-test-plan.md) with each relevant feature change and deployment: stable test IDs, steps/expected results, production availability and release history. Preserve Dan's reported results separately from automated/local evidence. Features that remain local or provider-blocked must be labelled accordingly. Link new roadmap features to their acceptance cases; never silently mark owner acceptance complete.
+
+Dan clarified the sequence: continue building the agreed features; he will request one final deployment when ready and then test everything in production. The acceptance script is production-only, including production Demo, not a request for intermediate/local user testing. Do not prioritize an interim deployment over the remaining feature work. Engineering validation continues during development; deployment still waits for his explicit request.
+
+Latest advisor UI (12 September 2026): approved conversation pane implemented in the local synthetic prototype, with voice beside Send, chat-history overlay, expanded modal, and browser-persisted conversations/drafts. See [implementation](advisor-conversation-ui.md). Not deployed.
+
+## Latest authorized increment — 12 September 2026
+
+Dan approved implementing and E2E-testing OpenAI voice in the **local synthetic Demo advisor prototype**. This supersedes older planning-only and disconnected-voice statements for the prototype, not for the Azure Banking app. GPT-Live WebRTC, Responses function routing, trusted scenario calculations and voice-driven save/generate/cancel are implemented. Real Chrome audio tests and remaining limits are in [advisor-voice-e2e.md](advisor-voice-e2e.md). Do not start a second Live bank sync worker, enable real-data AI, or deploy this increment without its own approved scope. Reuse the already-authorized dedicated Banking key; never print its value.
+
+## Current direction — 12 September 2026
+
+Latest authorized work: Dan said "Agree with prototype. Start building it" for generative advisor UI. The standalone synthetic prototype is implemented in `prototypes/advisor`; read its README for launch, artifact contract, browser/security evidence and limits. Run `scripts/Start-AdvisorPrototype.ps1`, not Banking.Api: do not restart the local Live sync worker after Azure cutover. No AI provider, bank data or deployment is involved. Owner review is next. This supersedes the earlier planning-only status for this bounded local prototype.
+
+Dan requested a durable plan for Azure deployment, actual advisor/voice with Agents API what-if analysis, Saxo investments, loans, PFA pensions and an optional market terminal. Read [roadmap.md](roadmap.md) and [project-plan.md](project-plan.md) before choosing next work. These supersede older phase numbers and indefinite AI deferral below. The initial roadmap request authorized planning only; later explicitly approved deployment and local Demo AI increments are recorded separately and supersede that dated limit within their scopes. Keep cosmetic issues separate from release-critical failures. Older test counts and queued-import statements below are dated evidence, not current status. Dan currently has no investments or loans and confirms Saxo developer access. Production access and external AI data handling require concrete decisions before activation.
+
+## Earlier implementation context
+
+Latest bank enrichment (10 September 2026): provider-neutral optional transaction/account metadata, masked counterpart identifiers, per-account booked balance history, centered transaction details, MCC category suggestions and identity-backed Review matching are implemented locally. Read `bank-metadata.md` for semantics, tests and import status. Preserve original fallback transaction identity and all manual choices. One full Live enrichment pass respects existing cooldowns; queued is not completed. No Azure/deployment or AI work was authorized.
+
+Latest Goals update (9 September 2026): approved option 1 is implemented locally; canonical target `docs/design-targets/goals-gallery.png`. Status pills sit beside card titles. Latest refinement: photos are part of the card link; behind-plan tracks are dynamically red; Received labels are removed; withdrawals including zero are red until current status Reached. Latest selected detail target is `docs/design-targets/goals-contribution-detail.png`: contribution-first timeline, one timing/shortfall insight, period movements, notes/photo and one collapsed evidence section; supersedes duplicate forecast/countdown tiles. Photo upload/removal, monthly plans, recorded contribution dots, reconciliation and date impact are functional. Read `docs/goals-gallery.md`. Demo shows Holiday on track and Car behind by a returned 2,500 DKK contribution (one-month forecast delay); Summer house has an honest long-term forecast. `scripts/Refine-DemoGoalJourneys.cjs --apply` is guarded and idempotent. Do not reset or automatically seed Demo, touch Live bank data, or deploy. This supersedes older Demo deadlines and linear-only goal planning notes.
+
+Latest Budget update: option 1 is implemented locally. Read `docs/budget-studio.md` and its canonical image. Savings actuals now use net matched transfers on explicit BudgetEntry.SavingsAccountId links. Keep shared hero heights, manual/merge workflows, pagination and all themes. Explicit Demo refinement: `scripts/Refine-DemoBudget.cjs --apply`; no changes to Live or bank transactions.
+
+Latest Accounts update: option 2 is implemented locally. The panoramic summary leads into a searchable account directory and transaction ledger with a compact spending strip. Read docs/accounts-atlas.md and docs/design-targets/accounts-atlas.png. This supersedes the older right-insights layout notes below. Full-period figures stay independent of ledger search/pagination, and all five themes remain supported.
+
+Latest goal update: dedicated accounts are mandatory and exclusive per goal. Demo now has five accounts and three separately funded goals. Car receives 2,500 DKK/month and Summer house 5,000 DKK/month as matched synthetic internal transfers; total household cash is unchanged. Demo budget savings now total 9,300 DKK/month (including the existing 1,800 DKK holiday savings). See `docs/dedicated-goal-accounts.md`. Older shared-account and all-account directions below are superseded.
+
+Latest budget progress: named budget entries now have an optional persisted CategoryId, editable under Transaction categories. Progress compares booked calendar-month actuals with full monthly-equivalent allowances, aggregates shared categories by income/expense, excludes matched internal transfers, and flags missing mappings/history. The family Demo budget has 19 category-linked entries; its savings row is intentionally account-based. Four previously unclassified Demo coffees were assigned Dining. Goals retain their booked account-balance measurement. See `docs/budget-progress.md`.
+
+Latest Demo update: user explicitly requested two additional sample goals, a matching budget and richer family-of-four transactions. `scripts/Enrich-FamilyDemo.cjs --apply` has been run and verified idempotent: 1,672 current transactions, three goals, and the active “Family of four” budget based on 12 complete months. Existing holiday goal and prior budget entries were preserved. This supersedes the earlier one-goal/no-budget Demo restriction for this explicit enrichment only. Do not reset or re-seed automatically. See `docs/family-demo.md`.
+
+Latest: panoramic Overview approved and implemented locally. Use docs/design-targets/overview-panoramic.png as the selected visual, with DESIGN.md taking precedence for financial semantics. Three local WebP scenes and greetings follow Copenhagen time; all five themes remain active. Demo refinement was explicitly authorized and performed through scripts/Refine-DemoOverview.cjs --apply (one sample goal, categories and exact synthetic transfer pairs; no bank amounts or budgets changed). Do not re-seed automatically or touch Live. See docs/panoramic-overview.md for verification.
+
+Latest layout/amount correction: Accounts insights stay right when there is space and move above transactions on tablet/narrow desktop, not below. Phone order is unchanged. All displayed monetary amounts use a smaller currency suffix; charts require separate plain-text formatting for accessibility. See DESIGN.md.
+
+Latest consistency correction: shared sectionAction/text-action for View all and equivalent actions; responsive Accounts layout driven by available content width; one 900px shell/transaction breakpoint; readable category controls and options with matching trigger widths. Existing page-level overflow checks missed cramped card interiors. Use the consistency browser matrix for related UI changes; see ui-consistency.md.
+
+Latest budget correction: entry Type now offers Income, Expense and Savings (stored using the existing Expense/isSavings contract). Remove the separate checkbox and duplicate name row; use the top plan bar with Rename for saved plans. All dropdown panels match trigger width. Demo display-name cleanup covers synthetic bank entries and transaction-sourced budget names; do not reset the Demo database or alter manual entries. See DESIGN.md and budget-redesign.md.
+
+Latest Overview correction: remove the Available/Booked toggle and balance-type/account-count text. Keep the existing available-balance calculation. Move the selected period from below the page heading into the first section's top-right corner. The account popup uses the same compact spacing as primary navigation. See DESIGN.md.
+
+Latest collection correction: zero saved budgets/goals show a clear empty state and Create action. /budgets opens a manual draft only through /budgets/new. Cancel returns to the collection; no product records were created.
+
+Latest navigation correction: the whole bottom account row opens its utility menu (Settings, Connections, Sign out only). To switch between Dan and Demo, sign out and choose again on the welcome screen. Primary navigation rows are 34px with no row gap; the desktop account row is 36px with an aligned three-dot icon. Colored left-edge accents are not allowed on navigation, cards or selected rows. Shared dropdown styles include the opened native option lists; browser picker support/fallback is documented in DESIGN.md.
+
+
+Latest local access update (8 September 2026): welcome page, login-free Demo, and local password sign-in for Dan are implemented. Dan must set his own first password through the authenticated UI; never generate it or put it in chat. See [local access](local-access.md). Older launch-only and same-owner Demo descriptions are superseded. Sessions now expire on host restart.
+
+Earlier local update: the overnight quality pass and visual upgrade are complete. The normal HTTPS host is running; upgraded Overview verified in Chrome. The overnight heartbeat is paused. Cash-flow charts, interactive category rings, budget allocation and goal visuals are implemented. See the [morning report and screenshots](overnight-quality-ui.md). Owner acceptance remains.
+
+
+Scope: personal. Project details are in [PRODUCT.md](../PRODUCT.md); binding decisions are in [decisions.md](decisions.md).
+
+All project documentation, specifications, plans, and technical content must be authored and maintained in English, regardless of the language used in conversation with Dan.
+
+Assistant replies follow the language of Dan's current message, including language switches. This confirmed project preference overrides any generated template default requiring English conversation; it does not change the English project-content requirement.
+
+## Current handoff — local frontend built
+
+Latest budget clarification: Dan accepted the revised concept's visual direction, requested Income/Expense for every entry and monthly totals for income, expenses, savings and Rådighedsbeløb. He confirmed Savings as a marker on Expense entries. Use income − ordinary expenses − planned savings, partitioning expense entries to avoid double counting. The concept image predates these written corrections; no new image approval is needed. The redesign is now implemented locally; budget-redesign.md describes the resulting workflow and API boundaries.
+
+Latest owner correction: Budgets needs a model/workflow redesign, not just styling. Read budget-redesign.md before budget work. Named plans contain entries with name, amount and 1/3/6/12-month frequency; manual-first creation, multiple plans, explicit active selection and reviewed merge/new transaction generation are required. Comparison/projections are later. The named-plan implementation supersedes the category-limit editor. Its additive migration preserves all historical category limits, available read-only. No product goals or named plans are seeded or converted. Dan should create his own first plan from the UI before continuing review with Goals.
+
+Dan approved local frontend implementation with two corrections: use one period dropdown and remove the top Demo control. These are implemented; account switching remains in navigation/More/Settings. Do not restart image approval rounds. Iterate on the working interface.
+
+The full local screen set is implemented in src/Banking.Api/wwwroot using native JavaScript modules/HTML/shared CSS. Browser access uses scoped Demo/Owner sessions and HttpOnly/Secure/SameSite=Strict cookies; the owner launch ticket is retained only for trusted setup/recovery. No API token is embedded in browser assets. Theme/language preferences alone are saved in localStorage.
+
+Validation: 54/54 backend tests and 39 Chrome browser workflow checks pass, with no browser script errors. Browser saves used only disposable GUID-named test databases. The normal HTTPS host was restarted with the additive NamedBudgetPlans migration, and Chrome was reopened successfully. Read-only checks confirm zero new named plans and zero goals in both Dan and Demo, zero active plans, and the eight historical Demo category limits preserved. No product goal/budget was created, deleted or converted. Normal local URL: https://localhost:5443; open with scripts/Open-Banking.ps1. The named-budget UI and API are implemented; owner acceptance remains.
+
+Start with scripts/Start-Backend.ps1 -Https; open a browser session with scripts/Open-Banking.ps1. scripts/Test-Backend.ps1 now resolves the installed x64 runtime explicitly on ARM64; scripts/Test-Frontend.ps1 runs the disposable-browser harness using the bundled Playwright path. See local-frontend.md for screenshots and acceptance limits.
+
+Accounts redesign is implemented locally after Dan approved the concept with a scalable searchable account picker and account/category colours. It uses /api/account-insights for full-period scoped aggregates and the paginated ledger for transactions; upcoming-estimates accepts an optional accountId. No migration or cloud setup. See DESIGN.md for exact filter semantics.
+
+Review is implemented following Dan's approval of the concept. It replaces Activity navigation with category/transfer queues, account filters, bulk categorisation, optional rules, 24-hour snooze, dismissal and persisted guarded Undo. Conservative pairing and app-owned actions are described in local-backend.md. The additive ReviewActions migration and encrypted backup support are included. Legacy Activity deep links remain available; Accounts is the primary ledger.
+
+Next: continue one-page-at-a-time visual review with Budgets, then Goals and remaining screens. Dan tests creating/editing a goal and budget from the UI in each workspace. Automated local checks have passed; do not claim owner acceptance, actual bank UI reconciliation, remote phone accessibility, or Azure release approval. No tunnel, Azure or AI service was created. Remote mobile currently loses rendered images when the assistant turn completes; do not claim the image delivery issue is fixed.
+
+## Earlier backend evidence
+
+The original backend milestone verified a first Danske Bank import of three DKK accounts, 2,905 transactions, six ITBD/ITAV snapshots and history from 2024-09-09. Consent expires 2027-03-06 12:29:27 UTC. Shared alternative identity hashes were excluded to avoid merging distinct accounts; encrypted session checkpoint/retry recovered the authorized session without new MitID. The fictional product demo had three accounts and 628 transactions. Earlier test milestones were 36 and then 42 tests; the current 54-test/browser evidence is above. See local-backend.md and enable-banking-onboarding.md for dated details. No `.git` directory was present in the earlier run, and no commit/push was made.
+
+Dan will create goals and budgets through the UI in both workspaces. Do not create new goal/budget records in Banking_Demo or Banking_Live_Dan on his behalf. Automated mutation tests use disposable Banking_Test databases only. Historical Demo budgets remain untouched unless Dan requests removal. The original local iteration implemented disconnected advisor placeholders; actual AI is now planned in the 12 September roadmap. Settings is a separate page with its own navigation and Back to Overview. Mobile support is mandatory.
+
+## Inviolable sequence
+
+Design update on 7 September 2026: Dan approved the v3 light Overview, with From/To fields visible only after Custom is clicked. The image and written exception are recorded in DESIGN.md and docs/design-targets/README.md. He selected the first/darkest dark variation, Graphite, now promoted to overview-dark.png. Settings must offer five preset themes (Light and Graphite approved; three palettes open), with custom themes later. The lower-left account selector displays Dan for live and Demo for synthetic data, replacing the separate Live/Demo toggle without changing owner authentication. Add automatic budget suggestions from transactions followed by manual adjustment; resync/recalculation must preserve manual decisions. That design-only request has since been followed by Dan's agreement to local implementation and remote visual checkpoints; see Latest execution update above. These additions extended the original backend and are now covered by the current local implementation and tests; actual AI was deferred for that iteration and is now planned in the 12 September roadmap.
+
+1. Build and verify the complete MVP backend locally: database, bank adapter, APIs, finance logic, jobs, security, and tests. Use technical clients and API tests; do not build product screens or a temporary dashboard.
+2. Design the frontend together with Dan after backend completion. Present concrete workflows and visual proposals; record his approval in `DESIGN.md` before implementing product UI. Existing screen ideas are not approved designs.
+3. Implement the approved frontend locally and verify the complete MVP, including browser workflows, according to [project-plan.md](project-plan.md).
+4. Present Dan with the local demo, test results, real integration constraints, release proposal, and updated price.
+5. **Stop before any Azure change or deployment. Require Dan's explicit approval for the concrete scope.** Frontend design approval does not authorize Azure or deployment.
+6. Only then may the final phase with Azure resources, registrations, configuration, and deployment be performed within the approval.
+
+This also applies to test/staging, free resources, Entra apps, role/secret changes, CI/CD, and any automated agents. Do not create cloud dependencies to make local development work. A GitHub push, merge, test results, or a finished MVP never constitutes release approval by itself. Any future pipelines must not deploy automatically on push/merge.
+
+Complete Enable Banking integration under Dan's latest instruction and confirmed personal/read-only scope; do not add another generic approval pause for routine authorized integration work. Owner sign-in, account linking and MitID require Dan when authentication/consent cannot be completed by the assistant. Do not publish a callback or create a tunnel/cloud dependency without a concrete approved scope. Do not call a simulator a verified bank integration. Azure changes and deployment always retain their explicit final approval gate.
+
+## Documentation routes
+
+Goal account requirement: one goal per dedicated account supersedes the former shared/all-account scope. The API and UI enforce exclusive assignment; old incompatible goals show unknown progress until reassigned. See `docs/dedicated-goal-accounts.md`.
+
+Dan has added full product Demo mode to the MVP (D17): Dan/Demo account-based workspace switching (D25), complete feature behavior in isolated demo storage, and no live data or live bank calls in Demo. Build the final synthetic dataset only after understanding his real data structures/scenarios. Existing engineering fixtures are not the final demo. Implement and verify workspace isolation before frontend design; design the switch with Dan and implement its UI only after approval.
+
+- Product/scope: [PRODUCT.md](../PRODUCT.md).
+- Phases, local MVP definition, and optional networking: [project-plan.md](project-plan.md).
+- Local architecture and later Azure mapping: [architecture.md](architecture.md).
+- Data and import semantics: [data-model.md](data-model.md).
+- Access, secrets, and MCP boundary: [security.md](security.md).
+- UI workflows, approved targets, and remaining theme/layout decisions: [DESIGN.md](../DESIGN.md).
+- Mandatory cross-page UI rules (scenic header composition, panels, headings, tabs, rows, tokens, CSP-safe styles, browser checks): [ui-consistency.instructions.md](../.github/instructions/ui-consistency.instructions.md).
+- Dated sources, estimates, and unresolved facts: [research.md](research.md).
+
+## Setup, run, and validation
+
+- Start: `./scripts/Start-Backend.ps1`; synthetic demo: `./scripts/Demo-Backend.ps1`.
+- Tests: `./scripts/Test-Backend.ps1` (real disposable SQL LocalDB databases plus offline HTTP stubs).
+- Build: `dotnet build src/Banking.Api --arch x64`. LocalDB requires an x64 app/test process on Dan's ARM64 Windows machine; the scripts explicitly select it.
+- API client: `./scripts/Invoke-Banking.ps1 -Path /api/accounts`.
+- SQL instance: `(localdb)\Banking`; product demo: `Banking_Demo`; live: `Banking_Live_Dan`. The old engineering database `Banking_Local` is retained. Never delete any of these as test cleanup. Tests own only GUID-named `Banking_Test_` and `Banking_Restore_` databases.
+- Migrations: `dotnet ef migrations add <Name> --project src/Banking.Api`; design-time context is explicitly local. The local host applies migrations on startup. This is not a production migration strategy.
+
+Local development starts without Azure login or cloud resources. The host has separate guarded local and Production configurations. Stop the existing local host before rebuilding on Windows to avoid locked output files. Live access remains conditional on verified protection and owner bank consent. Do not run local Live synchronization concurrently with Azure.
+
+Validation: run affected backend tests, inspect local HTTP behavior and sanitized logs, and keep implementation evidence separate from real-bank and production acceptance. Check Markdown links after documentation changes.
+
+## Working boundaries
+
+Preserve the generated shared instructions in `AGENTS.md` and `.github/copilot-instructions.md`; project rules are defined here. Local backend implementation and Enable Banking integration setup are authorized. Ask Dan to complete private sign-in and bank/MitID consent when needed. Product UI implementation, Azure, and deployment retain their separate sequence/approval requirements. Use OIL for relevant personal context; do not create vault notes without agreed scope and authorization.
+
+## Current Review experience
+
+The approved first Review design is implemented locally; canonical target docs/design-targets/review-focus.png. Demo has an explicitly prepared actionable queue (initially six category items and two transfer pairs). Do not automatically reseed it: user decisions must persist. scripts/Prepare-DemoReview.ps1 requires -Apply and preserves an existing preparation receipt. tests/ui/review-focus-fixture.js is only an injected browser fixture, never app code. Current evidence: design-qa.md; previous Goals evidence: docs/goals-detail-design-qa.md.
+
+Latest UI QA: docs/ui-qa-2026-09-10.md. Source-level account picker accent stripe removed; no decorative colored left-edge selection markers permitted. Matched-transfer GET now includes bounded outgoing/incoming metadata so older pairs remain understandable. Five scoped backend tests passed. Dan confirmed successful Live sign-in and fresh bank data on 10 September 2026. Password entry remains owner-only. Latest account preferences, money cards and creation-modal changes: docs/account-preferences-and-creation-modals.md.
+
+
+## Azure release execution — 12 September 2026
+
+Dan subsequently explicitly approved the full deployment and asked for a live link. Resources are provisioned in subscription Dan Aakesen, group rg-banking-prod-weu: App Service B1, separate Live/Demo SQL databases, protected App Service settings and private recovery Blob Storage. No Key Vault or private networking. Existing Dan/password login is retained; Google registration is deferred. Cloud keyring and encrypted session state persist on /home, goal photos stay in SQL. CLI/Bicep plus Entra-authenticated SCM ZIP deployment; no GitHub pipeline. Both databases were imported and reconciled; hosted access and browser validation passed. The Azure worker is enabled, with its next real-bank pull governed by the existing six-hour schedule. Dan's owner/phone acceptance remains. Read [execution evidence](../.azure/deployment-plan.md). Local worker remains stopped; only Azure should synchronize after cutover.
+
+## Actual advisor prototype — 12 September 2026
+
+Dan approved real prompt-through-UI testing with synthetic Demo data and secure OpenAI key creation, using Chrome. The Node prototype now loads the ignored, owner-restricted .env server-side and uses the actual Agents API (gpt-6-astra, OpenAI-hosted sandbox, outbound network disabled). Complete generated files render through the isolated canvas and save revisions. Follow-ups carry the selected artifact and state into a new short-lived sandbox. See docs/advisor-e2e.md and prototypes/advisor/README.md for current evidence, lifecycle limits and launch instructions. No Live data or Azure deployment is authorized by this prototype step. Do not restart the local bank worker.
+
+
+## Danish Demo content and language settings — 18 September 2026
+
+Confirmed user request: synthetic Demo content is Danish regardless of the interface language. Interface copy follows Settings → Language (English/Danish), including the embedded advisor. Proper company names, identifiers and user-authored content are preserved.
+
+- `Providers/DemoLanguage.cs` maps exact known synthetic labels. Product provider source descriptions/references used for transaction identity remain unchanged; display names and bank metadata are Danish. Demo category rules are translated with their descriptions (including transport → pendlerkort).
+- `DemoService.LocalizeDanish` is explicit maintenance, guarded to the Demo workspace with only product-demo connections. From `src/Banking.Api`, run the x64 host in Development with `--Maintenance:Action=localize-demo-danish --Maintenance:Mode=Demo --Local:DisableWorker=true --EnableBanking:Enabled=false`. It is repeatable and does not reset data or run at startup. Older Demo enrichment scripts now author/recognize Danish labels; none were executed for this change.
+- The advisor receives language at creation and through same-origin host messages. Static shell text has reversible translations; saved conversation text, titles, memories and generated analyses are not rewritten. Dates and numbers use the selected locale.
+- Local Demo update preserved 1,820 transactions, sum 406,972 DKK, transaction identity/amount/account checksum 1943416216, five accounts and three goals. No Live records were changed. Production has not been updated.
+- Verification: ProductDemoTests passes (imports, repeatable translation, unknown custom name preservation, reconciliation, reconnect identity and Live refusal); 19 Node checks pass. Chrome route checks in Danish and English plus Danish mobile Overview and chat drawer checks completed. No voice call or paid AI request was made.
+
+18 September 2026: owner approved broader advisor read/edit coverage. See [advisor app coverage](advisor-app-coverage.md) for new allowlisted data reads, staged app-record edits, independent chart context, bounded multi-step research and verification limits. Local only.
+
+### Saxo SIM access correction — confirmed 27 September 2026
+Demo visitors may prepare and explicitly confirm Saxo SIM orders; owner-only SIM trading is not the product rule. Dan alone may access LIVE, and this SIM release does not enable LIVE order execution. Review/confirmation tickets are isolated by validated browser session, while SIM holdings and broker activity are shared. Follow docs/saxo-investments-plan.md. Both local frontend and Azure use this same backend boundary.
+
+27 September quote-access follow-up: build 2026.09.27-saxo-quote-status deployed and checked through Azure and localhost:5444. Step 2 remains paused: SIM stock quote access returns NoAccess; Developer Portal shows Connect live account. Obtain explicit authorization for LIVE/SIM account linking before that provider action; do not treat the app's error-handling fix as restored market data. Evidence and official Saxo sources are in docs/saxo-investments-plan.md.
+
+27 September latest Saxo decision: Dan chose to continue step 2 without LIVE or LIVE/SIM linking, superseding the earlier quote-access pause. SIM test proposal and execution boundaries: docs/saxo-sim-test-orders-2026-09-27.md. Do not resume LIVE linking. Submit no order until concrete terms are approved.
+
+## Saxo LIVE readiness — 28 September 2026
+For LIVE activation work, follow [the disclaimer-derived readiness checklist](saxo-live-readiness.md). Dan has changed the data-access direction from SIM-only to owner-only LIVE reads plus an explicit SIM/LIVE choice through the same deployed API. Keep public Demo restricted to SIM and LIVE trading disabled during data verification. Checklist review does not mean all tests passed or that terms were accepted. Licence scope for workplace demonstrations/shared SIM and market-data use remains to be clarified separately.
+
+28 September implementation follow-up: owner-only Saxo LIVE read support, session-bound OAuth completion, shared request controls and SIM execution limits are deployed as `2026.09.28-saxo-live-readiness`. Azure and localhost:5444 build/asset/shared-data parity and SIM reads passed. LIVE reads remain default-disabled; LIVE trading remains server-disabled and Demo remains SIM-only. Follow [saxo-live-operations.md](saxo-live-operations.md) for exact settings, evidence and remaining external gates. The frontend-only host allows `saxo-session.js` and continues using Azure only. LIVE registration, terms acceptance and real-data reconciliation remain pending.
+
+## Saxo market-data source — 28 September 2026
+Dan confirmed that market research must use Saxo LIVE quotes/history in both SIM and LIVE trading modes; Yahoo is not an acceptable fallback. This supersedes the original Yahoo phase-1 source decision. See [saxo-market-data.md](saxo-market-data.md). Code and fixture validation are prepared; production provider verification requires deployment. Trading/account reads keep their selected environment, LIVE execution remains disabled, and private LIVE brokerage data remains owner-only. The later shared-research decision below supersedes the original owner-only market-feed rule. LIVE registration and read configuration were subsequently completed by Dan; earlier pending-registration notes above are historical.
+
+
+## Shared Saxo research for Demo — confirmed 28 September 2026
+Dan explicitly approved Demo access to the LIVE market feed only: instrument search, quotes and historical charts. No LIVE account, balance, holding, order, activity, credential or OAuth/session-management access is shared. Use the separate research guard only for `/api/markets/search` and `/api/markets/chart`; keep all existing brokerage guards. This supersedes earlier statements that Demo is SIM-only for market research, but does not change SIM trading or owner-only private LIVE reads. Chat and voice follow the same distinction. Deployed in `2026.09.28-combined-markets-investments`; authenticated Demo search on Azure and localhost currently requires a fresh Saxo market-data sign-in (`SAXO_MARKET_SIGN_IN_REQUIRED`), so real quote/chart/source/delay acceptance remains pending. See [Saxo market data](saxo-market-data.md) and [.azure/deployment-plan.md](../.azure/deployment-plan.md) for contract and release evidence.
+
+## Markets trading desk and Investments canvas — 28 September 2026
+Dan reviewed three Markets concepts (`prototypes/markets-concepts`, sample data only) and chose concept 1, the trading desk, for Markets and concept 2, the portfolio canvas, for Investments. Both pages are deployed in `2026.09.28-combined-markets-investments`. The app uses Saxo-LIVE-only market data; current Demo search requires fresh Saxo market-data sign-in, with no fallback. Design, data rules and verification are in DESIGN.md under "Markets trading desk" and "Investments portfolio canvas". Release and postdeploy evidence are recorded in [.azure/deployment-plan.md](../.azure/deployment-plan.md) and [production-test-plan.md](production-test-plan.md); owner/provider acceptance remains pending sign-in.
+
+## Deployment agent preference — confirmed 28 September 2026
+Dan explicitly asked that deployments always be delegated to a GPT-6 Luna subagent with medium reasoning effort (`gpt-6-luna`, `medium`). Use this preference for future authorized Banking deployments unless Dan overrides it. The coordinating agent retains responsibility for scope, preserving other agents' changes, reviewing validation and reporting the outcome. This is a model/delegation preference, not standing permission to deploy; each deployment still needs user authorization. Do not silently substitute another model if the requested one is unavailable.
+
+
+## Saxo partial market data — 28 September 2026
+Dan asked for the missing Markets/Investments market data to be fixed in the API as well as the UI. Implemented locally and not deployed.
+- Quote and history are now independent, with sanitized per-operation diagnostics.
+- A 403 cooldown applies only to the denied instrument.
+- SIM positions get labelled LIVE-quote estimates for exact listings only; no FX is applied and broker totals are unchanged.
+- The advisor handles partial data.
+
+The root cause of production `NoAccess` stays unresolved until deployment reveals Saxo's code. Saxo documents an account-holder "Open API Access" market-data opt-in in SaxoTraderGO. See [saxo-market-data.md](saxo-market-data.md). Deployment requires Dan's approval and delegation to GPT-6 Luna at medium effort.
+
+Update: deployed on 28 September 2026 as `2026.09.28-saxo-partial-market-data` (SCM `f0c9be66-e49c-4684-b666-4c185f3dc077`). Saxo now reports: history HTTP 403 and quote `NoAccess` for MSFT, GMAB, SIE and VWS. This is consistent with OpenAPI market data not being enabled for the LIVE account, but not proven. The next step is Dan's decision in SaxoTraderGO; see [saxo-market-data.md](saxo-market-data.md).
+
+Update, 22:20 Copenhagen: Dan enabled OpenAPI market data. LIVE quotes (15-minute delay) now return for all four listings and pair with SIM holdings as `LIVE`/`est.` on both pages. History now fails with HTTP 400 `InvalidModelState`, most likely because the chart request sent `Mode=UpTo` without `Time`. The fix is local only (no `Mode`; sanitized ModelState field names in diagnostics; "rejected" wording in the UI) and needs Dan's deployment approval.
+
+Update, 29 September: the fix was deployed as `2026.09.29-saxo-history-request` (Luna, medium; rollback in `.azure/deployment-plan.md`). It is not yet verified against Saxo: the LIVE market-data and SIM sessions expired overnight, so all chart reads return `SAXO_MARKET_SIGN_IN_REQUIRED`. Dan must sign in again: Markets → "Log ind for markedsdata" in his Live workspace. The SIM holdings could be read again at 08:58. Then recheck all ranges.
+
+Update, 09:33: after Dan's LIVE sign-in, all 32 chart reads return history and quotes, delayed 15 minutes. This confirms the fix. SIM `LIVE`/`est.` pairing and the Demo LIVE denial also passed. Browser check done on Azure at three widths. Open observation: VWS 5d has a recurring 11:00–13:15 UTC gap.
+
+Update, about 10:05: the VWS gap was investigated. Only VWS is affected, and trading did happen in the window (daily volume exceeds the 15-minute sum by 14–21 %). No parser rule could drop valid samples. The cause is inferred: Saxo sends no samples there, or none with usable trade prices. A backend-only `historySamples` diagnostic is ready locally (Saxo 114/114) and not deployed. Deploy it together with the separate sign-in UI work after Dan's approval; see `saxo-market-data.md`.
+
+## Saxo signed-out control — 29 September 2026
+Dan's feedback on the expired-SIM Investments screen (three "sign in" prompts) is implemented locally and not deployed: one danger-tinted `.saxo-auth` header pill per Saxo connection ("Saxo SIM · Not signed in" / "Session expired" plus a single Sign in button), the full-width banner removed, and short neutral in-content states on Investments and Markets. Other notices keep their Retry. Owner/Demo visibility is unchanged. Rules, layout and verification are in DESIGN.md under "Saxo sign-in control — 29 September 2026" and [Saxo market data](saxo-market-data.md). Checks: `node --test tests/ui/*.test.mjs` and, against a running `localhost:5444` frontend host, `node tests/ui/saxo-signed-out.browser.cjs`. A wwwroot change reaches Azure only through an authorized deployment.
+
+Update, 11:55: the combined release `2026.09.29-saxo-samples-signin-ui` is deployed (Luna, medium). The VWS gap is confirmed as a Saxo data gap: 0 samples dropped, 40 intervals missing. The sign-in UI browser suite passed 66/66 on Azure.
+
+Decision, 29 September 2026 at 12:49: Dan will not subscribe to real-time exchange data. Banking stays on Saxo's 15-minute-delayed prices, with no TradeLevel/FullTradingAndChat upgrade. `ForAudience()` stays a pass-through hook. See [decisions](decisions.md). The short-range/live-refresh change is local and not approved for deployment.

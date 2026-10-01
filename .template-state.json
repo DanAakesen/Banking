@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "generator": "shared-project-templates",
+  "templateVersion": "2.0.1",
+  "scope": "personal",
+  "modules": [
+    "backend",
+    "data",
+    "frontend"
+  ],
+  "requestedSkills": [
+    "swe-performance-hunt",
+    "swe-recent-commit-bug-hunt",
+    "swe-security-audit",
+    "swe-test-gap-hunt"
+  ],
+  "files": {
+    ".github/instructions/backend-quality.instructions.md": "51BE157CC60F816C47352DA0F9EC661FB11C37A543D92B095DDFCCEDF38DAE45",
+    ".github/instructions/data-visualization.instructions.md": "879CE3B6B7C8F9C8990F15288A1D22BF8A150B22CD6D6A1E3F172B418D2C2570",
+    ".github/instructions/design-system.instructions.md": "5A68DEBC559576BD80F313A976525AE1FE895C49E28B2E7538ECBCC0F27EAE27",
+    ".github/instructions/frontend-quality.instructions.md": "F240079B51C683659F8442EB69C2AFEB4BBE6B7FB4F96ADAC113BD965C5E8651",
+    ".agents/skills/data-visualization/SKILL.md": "8164B4BAD387A655C215816F342871CD07E0D489E780CEC7C7D8EC7CD8342EE8",
+    ".agents/skills/product-ui/SKILL.md": "58842EE24645544A1D7668732FF2616A6E3776A5C3B6C88CA64602B721517EF9",
+    "AGENTS.md": "B80936A3059EAB39A2C48C5A149FE488127E713C20EFADCB3E477E2647600DF9",
+    ".github/copilot-instructions.md": "B80936A3059EAB39A2C48C5A149FE488127E713C20EFADCB3E477E2647600DF9",
+    ".agents/skills/swe-performance-hunt/SKILL.md": "F787EB6B5223ED114FFD1499B77158FA5CE72EFB3F20B05886F449F08B179FF5",
+    ".agents/skills/swe-recent-commit-bug-hunt/SKILL.md": "9292B834CB08185FD93EF755CE66D210FAA36149F52333A145050A4FC1307E4D",
+    ".agents/skills/swe-security-audit/SKILL.md": "181A579DE09ECE19A7163FB8B96BC480613F74E4A17AD18C136C364D0F620F2C",
+    ".agents/skills/swe-test-gap-hunt/SKILL.md": "F1EE60AC66E7BF25FCE0DFE5A026F1E6C0F3D4A75926621B2FF9B7F67CA49373"
+  }
+}
