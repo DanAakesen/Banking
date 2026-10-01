@@ -1,14 +1,24 @@
 # Banking cloud development
 
-Confirmed by Dan on 1 October 2026: use private `https://github.com/DanAakesen/Banking` as source of truth and develop only in its Codex cloud environment.
+Confirmed by Dan on 1 October 2026: private `https://github.com/DanAakesen/Banking` is the single source of truth for every agent and provider. All development uses cloud-hosted compute connected to this repository. Codex Cloud is one option; GitHub Copilot and other agents do not need access to it.
 
 ## Working rules
 
-- Implement, build, test and preview inside Codex cloud. Use branches and reviewable pull requests for subsequent work.
-- Retain the local checkout for reference. Do not use local launchers, local databases or local development services. The initial repository migration and guidance updates are authorized exceptions.
+- Implement, build, test and preview in a cloud-hosted workspace connected to `DanAakesen/Banking`, using the chosen provider. A local editor is acceptable only as a client for remote cloud compute.
+- Retain local checkouts for read-only reference and coordination. Do not edit source, use local launchers, local databases or local development services. If cloud execution or GitHub access is unavailable, report the blocker without a local fallback.
 - The shared deployed production API still owns business logic, integrations, scheduling and separate Dan/shared fictional Demo data. Cloud test fixtures must remain isolated; never fall back to production credentials or data.
 - Production deployment, database migration against production and financial actions require their own explicit authorization.
 - Secrets, environment files, local databases, diagnostic logs, historical browser captures and generated release artifacts are excluded from Git. Configure any subsequently required credentials in the environment's secret controls, with explicit authorization.
+
+## Provider-neutral GitHub workflow
+
+1. Verify that the workspace uses cloud compute and its Git remote points to `https://github.com/DanAakesen/Banking`. Read `AGENTS.md`, the project context map and applicable path-specific instructions from the current GitHub branch. Copilot also reads `.github/copilot-instructions.md`; both entrypoints carry the same cloud/GitHub policy.
+2. Fetch the current GitHub refs before starting or resuming work. Start a task branch from current `origin/main`, or continue the explicitly requested remote branch/PR. Preserve existing changes; do not force-push or reset someone else's work.
+3. Implement and validate in that cloud workspace. The workspace filesystem, caches and published environment are execution state; GitHub is authoritative for code, instructions and durable project decisions.
+4. Review the diff, commit only task-related changes, and push the task branch to GitHub. Open or update a reviewable PR for implementation work. Explicit requests to update the default branch can authorize that narrower workflow. Creating/pushing commits and draft PRs is part of authorized project work; merging and production deployment require their own authorization.
+5. Report the GitHub branch, pushed commit, validation results, PR link and any remaining limitations. An unpushed commit or an environment snapshot is not delivered work. If interrupted, report unpushed state explicitly.
+
+Read-only coordination, repository guidance updates through GitHub APIs and the initial migration do not require local application execution. Do not infer permission for local implementation from them.
 
 ## Codex environment configuration
 
