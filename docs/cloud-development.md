@@ -20,6 +20,11 @@ The existing frontend host requires HTTPS loopback and specific ports. A cloud p
 
 ## Migration status
 
-Repository publication and actual Codex environment readiness must be verified separately. A setup document alone does not create or publish an environment. Record the environment identifier and cloud build/test results only after the service confirms them.
+- 1 October 2026: private repository `DanAakesen/Banking` created and initial source uploaded to `main` at commit `528cd5f904296f7576d2c5a262a42426cf2bb991`; GitHub API and remote ref verified.
+- Codex environment **Banking** created, identifier `6abdf572b9088191946caf44f7500f06`. Its saved detail page confirms repository `DanAakesen/Banking`, universal image, setup/maintenance commands, caching enabled and no secrets or environment variables.
+- [Open the Banking environment](https://chatgpt.com/codex/cloud/settings/environment/6abdf572b9088191946caf44f7500f06). Use it when choosing cloud execution in Codex.
+- Cloud setup/build/test execution remains a separate verification step. Backend integration fixtures currently hard-code Windows SQL Server LocalDB and cannot be treated as Linux-compatible. Use the separate frontend-host test suite for cloud setup validation; report the backend limitation explicitly.
+
+Repository publication and actual Codex environment readiness must be verified separately. Never claim cloud tests passed solely because an environment configuration was saved.
 
 Reference: [official Codex cloud environment guidance](https://learn.chatgpt.com/docs/environments/cloud-environments).
