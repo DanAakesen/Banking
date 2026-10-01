@@ -65,6 +65,33 @@ export function saxoLivePoll({range,visible,blocked}){return SAXO_SHORT_RANGES.i
 export function saxoFeed(minutes){
  return typeof minutes!=='number'||!Number.isFinite(minutes)||minutes<0?{kind:'unknown',minutes:null}:minutes===0?{kind:'none-reported',minutes:0}:{kind:'delayed',minutes};
 }
+// Labels use only the matching response's numeric delay, never its age or legacy prose.
+export function saxoDelayLabel(part,minutes,L){
+ const feed=saxoFeed(minutes),name=part==='history'?L('Chart','Graf'):L('Price','Kurs');
+ const value=feed.kind==='delayed'?L(`${new Intl.NumberFormat('en-GB',{maximumFractionDigits:20}).format(feed.minutes)} min delayed`,`${new Intl.NumberFormat('da-DK',{maximumFractionDigits:20}).format(feed.minutes)} min forsinket`):feed.kind==='none-reported'?L('No reported delay','Ingen oplyst forsinkelse'):L('Delay unknown','Forsinkelse ukendt');
+ return `${name} · ${value}`;
+}
+export const saxoUpdateFailed=L=>L('Update failed · showing previous data','Opdatering mislykkedes · viser tidligere data');
+// Data and metadata remain a single snapshot when a transient whole-response refresh fails.
+// Callers must discard on authorization, entitlement, listing, or deployment failures instead.
+export function saxoRetainedSnapshot(data){
+ if(!data)return null;
+ const status=(part,usable)=>['available','stale'].includes(data[part])||(!data[part]&&usable)?'stale':data[part];
+ return {...data,stale:true,historyStatus:status('historyStatus',data.bars?.length>0),quoteStatus:status('quoteStatus',data.price>0)};
+}
+// Each part owns its retrieval timestamp. A fresh quote cannot date retained history.
+export function saxoResponseMeta(data,{L,locale,history=true,quote=true}){
+ if(!data)return [];
+ const out=[],part=(name,delay,status,retrieved)=>{
+  out.push(saxoDelayLabel(name,delay,L));
+  if(status==='stale')out.push(`${name==='history'?L('Chart','Graf'):L('Price','Kurs')} · ${saxoUpdateFailed(L)}`);
+  out.push(`${name==='history'?L('Chart retrieved','Graf hentet'):L('Price retrieved','Kurs hentet')} · ${saxoRetrieved(retrieved,locale)}`);
+ };
+ if(history&&data.bars?.length)part('history',data.chartDelayMinutes,data.historyStatus,data.historyRetrievedAt??(!data.historyStatus?data.retrievedAt:null));
+ if(quote&&data.price!=null&&(!data.quoteStatus||['available','stale'].includes(data.quoteStatus)))part('quote',data.quoteDelayMinutes,data.quoteStatus,data.retrievedAt);
+ return out;
+}
+export const saxoRetrieved=(value,locale)=>{const d=value==null||value===''?null:new Date(value);return !d||Number.isNaN(d.getTime())?'—':d.toLocaleString(locale,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});};
 export const saxoClock=(value,locale)=>{const d=value==null||value===''?null:new Date(value);return !d||Number.isNaN(d.getTime())?'—':d.toLocaleTimeString(locale,{hour:'2-digit',minute:'2-digit',second:'2-digit'});};
 // Saxo's missing intraday intervals (historySamples.missingIntervals) as one honest line; empty when none or unknown.
 export function saxoGapNote({missing,interval},L){

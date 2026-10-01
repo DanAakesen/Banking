@@ -214,3 +214,10 @@ button.inv-chip-button{min-height:32px;padding:4px 10px;border-color:transparent
 @container (max-width:640px){.inv-side{grid-template-columns:minmax(0,1fr)}.inv-panel{padding:16px}.inv-panel h2{font-size:1.3rem}.inv-donut-wrap{grid-template-columns:110px minmax(0,1fr);gap:14px}.inv-donut{width:110px;height:110px}.inv-segment button{min-height:40px}.inv-ranges{width:100%;justify-content:space-between}.inv-ranges button{padding:4px 8px}.inv-chart{height:230px}.inv-stat strong{font-size:.95rem}}
 @media(max-width:520px){dialog.inv-drawer{width:100vw;border-radius:0}.inv-drawer-inner{padding:18px}}
 @media(prefers-reduced-motion:reduce){.inv-tile,.inv-tile:hover{transition:none;transform:none}dialog.inv-drawer[open],.is-refreshing svg{animation:none}}
+
+/* Chart and price provenance remain readable in narrow cards. */
+.inv-response-meta{color:var(--muted);font-size:.72rem;line-height:1.5;overflow-wrap:anywhere}
+.inv-focus-quote{flex-wrap:wrap;min-width:0}
+.inv-focus-quote .inv-chip{white-space:normal}
+
+.inv-tile-meta{position:relative;z-index:1;font-size:.66rem;line-height:1.4;overflow-wrap:anywhere}

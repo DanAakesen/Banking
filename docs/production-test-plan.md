@@ -580,3 +580,12 @@ Dan reported that his existing Codex Azure Investments tab showed Connected. Ins
 
 ## Combined Markets and Investments deployment acceptance — 28 September 2026
 See [.azure/deployment-plan.md](../.azure/deployment-plan.md) for SCM ID, package and rollback hashes, test evidence, health/runtime parity and provider limitation. Azure and localhost:5444 both serve 2026.09.28-combined-markets-investments; UI/advisor 49/49 and 113/113, frontend-host 18/18, focused MarketTests 2/2. Demo market search currently returns SAXO_MARKET_SIGN_IN_REQUIRED; real quote/chart/source/delay and owner browser acceptance remain pending a fresh owner sign-in. Demo LIVE brokerage routes remain denied. No trades were placed and LIVE trading remains disabled.
+
+## SAXO-DELAY — per-response delay labels (1 October 2026; not deployed; owner results Not run)
+
+- SAXO-DELAY-01: On Markets, Investments and watchlists, compare each displayed chart and price with its own API delay field. Positive N: “Chart · N min delayed” / “Price · N min delayed”; zero: “No reported delay”; absent: “Delay unknown”. Repeat in Danish. A chart and quote with different delays must remain different.
+- SAXO-DELAY-02: Refresh data, change listing/range and return to a cached listing. Delay/status/retrieval metadata must update with the corresponding response; late replies must not affect the new selection. Retrieval date/time must be separate from delay.
+- SAXO-DELAY-03: Under a safely controlled transient failure, retained data keeps its original delay and retrieval timestamp and says “Update failed · showing previous data”. Chart-only failure must not label a fresh quote failed; quote-only failure must not label fresh history failed. Sign-in/entitlement denial discards affected prior data. Stale quotes are not used for current estimates.
+- SAXO-DELAY-04: Compare with Accounts at 1440, 1024 and 390 px in light/dark themes; check wrapping, keyboard navigation, no horizontal overflow/CSP errors, and accessible text labels. LIVE research remains independent of SIM/LIVE trading mode; private LIVE portfolio/order data is not shown in Demo. Do not place trades or change subscriptions to perform acceptance.
+
+Engineering evidence is recorded in docs/saxo-market-data.md. Isolated browser fixtures do not establish owner acceptance or live-provider results. No production failure injection is authorized.

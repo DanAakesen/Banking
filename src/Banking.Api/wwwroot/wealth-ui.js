@@ -1,4 +1,4 @@
-import {beginSaxoSignIn,finishSaxoSignIn,saxoEnvironment,rememberSaxoEnvironment,saxoAuthKind,saxoAuthStatus,saxoAuthView,saxoAuthMarkup,saxoAuthApply,saxoFeed,saxoClock,saxoGapNote,saxoLivePoll,SAXO_SHORT_RANGES,SAXO_LIVE_REFRESH_MS} from './saxo-session.js';
+import {beginSaxoSignIn,finishSaxoSignIn,saxoEnvironment,rememberSaxoEnvironment,saxoAuthKind,saxoAuthStatus,saxoAuthView,saxoAuthMarkup,saxoAuthApply,saxoDelayLabel,saxoResponseMeta,saxoRetainedSnapshot,saxoUpdateFailed,saxoClock,saxoGapNote,saxoLivePoll,SAXO_SHORT_RANGES,SAXO_LIVE_REFRESH_MS} from './saxo-session.js';
 export function createWealthUI({S,t,e,money,date,today,api,post,header,input,button,dialog,leave,navigate,errorText,confirmAction,validateForms,composeScene}) {
  const investments=createInvestmentWorkspace({S,e,money,api,post,header,errorText,composeScene});
  const L=(en,da)=>S.lang==='da'?da:en;
@@ -333,7 +333,7 @@ export function createInvestmentWorkspace({S,e,money,api,post,header,errorText,c
   return L(...messages[kind]||messages.transient);
  };
  // Zero is only "no reported delay", never real-time; a missing delay stays "not reported".
- const delayText=m=>{const f=saxoFeed(m);return f.kind==='unknown'?L('delay not reported','forsinkelse ikke oplyst'):f.kind==='delayed'?L(`delayed ${number(f.minutes)} min`,`forsinket ${number(f.minutes)} min`):L('no reported delay','ingen oplyst forsinkelse');};
+
  const ranges=[['1h','1H'],['1d','1D'],['5d','1W'],['1mo','1M'],['3mo','3M'],['6mo','6M'],['ytd','YTD'],['1y','1Y'],['5y','5Y']];
  let environment='SIM',run=0,paused=false;
  let root,main,controller,timer,seq,portfolio=null,orders=null,portfolioIssue='',orderIssue='',selection=null,busy=false,lastRead=null,metadata=new Map(),connecting=false,connectIssue='',marketConnecting=false;
@@ -368,7 +368,7 @@ export function createInvestmentWorkspace({S,e,money,api,post,header,errorText,c
  // Newest read for a listing, from either the one-day read or the selected holding's history read.
  function quoteEntry(symbol){
   const k=K(symbol);if(!k)return null;
-  const a=market.results.get(k),b=market.history?.key===k&&!market.history.loading&&market.history.at?market.history:null;
+  const a=market.results.get(k),b=market.history?.key===k&&market.history.at?market.history:null;
   return !a?b:!b?a:b.at>a.at?b:a;
  }
  // A watchlist item reuses a held listing's read when it refers to the same instrument.
@@ -553,9 +553,9 @@ export function createInvestmentWorkspace({S,e,money,api,post,header,errorText,c
    const weight=sizeTotal>0&&finite(v.baseValue)?v.baseValue/sizeTotal*100:null;
    const estimate=est?`${L('Est.','Anslået')} ${amount(v.marketValue,v.valueCurrency)}`:'';
    const value=basis==='market'?`${est?L('Est.','Anslået')+' ':''}${amount(v.baseValue,h.baseCurrency)}${weight!==null?` · ${share(weight)}`:''}`:estimate||(basis==='cost'?`${L('Purchase value','Købsværdi')} ${amount(h.cost,h.baseCurrency)}`:`${number(h.quantityText)} ${L('shares','stk.')}`);
-   const badge=est?`<span class="inv-tile-badge" title="${L('Estimated from a Saxo LIVE quote','Anslået ud fra en Saxo LIVE-kurs')}">LIVE</span>`:v.source==='broker'&&finite(h.priceDelayMinutes)&&h.priceDelayMinutes>0?`<span class="inv-tile-badge" title="${L('Price delayed','Kurs forsinket')} ${e(h.priceDelayMinutes)} min.">${e(h.priceDelayMinutes)}m</span>`:'';
-   const bars=colour==='today'&&h.pair.paired?market.results.get(K(h.symbol))?.snap?.bars:null;
-   return `<button type="button" class="inv-tile" data-inv-tile="${e(h.key)}" data-inv-focus="tile-${e(h.key)}" data-size="${size(h)}" data-share="${totalSize>0?size(h)/totalSize*100:0}" data-change="${change??''}" data-tone="${change===null?'neutral':tone(change)}" aria-pressed="${h.key===selection}"><span class="inv-tile-top"><span><strong>${e(ticker(h))}</strong><span class="inv-tile-name">${e(label(h))}</span></span>${badge}</span><span class="inv-tile-bottom"><span class="inv-tile-change"><span class="inv-sr">${colour==='today'?L('Today, Saxo LIVE','I dag, Saxo LIVE'):L('Since purchase','Siden køb')}${est&&colour!=='today'?' '+L('(estimated)','(anslået)'):''}: </span>${pct(change)}</span><span class="inv-tile-value">${value}</span></span><span class="inv-tile-share" aria-hidden="true"><i></i></span>${bars?spark(bars,h.pair.previousClose):''}</button>`;
+   const badge=est?`<span class="inv-tile-badge" title="${e(saxoResponseMeta(v.quote,{L,locale:locale(),history:false}).join(' · '))}">LIVE<span class="inv-sr"> · ${e(saxoDelayLabel('quote',v.quote.quoteDelayMinutes,L))}</span></span>`:v.source==='broker'&&finite(h.priceDelayMinutes)&&h.priceDelayMinutes>0?`<span class="inv-tile-badge" title="${L('Price delayed','Kurs forsinket')} ${e(h.priceDelayMinutes)} min.">${e(h.priceDelayMinutes)}m</span>`:'';
+   const tileHistory=colour==='today'&&h.pair.paired?market.results.get(K(h.symbol))?.snap:null,bars=tileHistory?.bars;
+   return `<button type="button" class="inv-tile" data-inv-tile="${e(h.key)}" data-inv-focus="tile-${e(h.key)}" data-size="${size(h)}" data-share="${totalSize>0?size(h)/totalSize*100:0}" data-change="${change??''}" data-tone="${change===null?'neutral':tone(change)}" aria-pressed="${h.key===selection}"><span class="inv-tile-top"><span><strong>${e(ticker(h))}</strong><span class="inv-tile-name">${e(label(h))}</span></span>${badge}</span><span class="inv-tile-bottom"><span class="inv-tile-change"><span class="inv-sr">${colour==='today'?L('Today, Saxo LIVE','I dag, Saxo LIVE'):L('Since purchase','Siden køb')}${est&&colour!=='today'?' '+L('(estimated)','(anslået)'):''}: </span>${pct(change)}</span><span class="inv-tile-value">${value}</span></span><span class="inv-tile-share" aria-hidden="true"><i></i></span>${bars?spark(bars,h.pair.previousClose)+`<small class="inv-tile-meta">${e(saxoResponseMeta(tileHistory,{L,locale:locale(),quote:false}).join(' · '))}</small>`:''}</button>`;
   }).join('');
   const sizing=basis==='market'?(view.estimated?L('Values marked Est. are estimated from Saxo LIVE quotes in the account currency; broker values are used where Saxo SIM supplies them.','Værdier markeret Anslået er beregnet ud fra Saxo LIVE-kurser i kontovalutaen; mæglerens værdier bruges, hvor Saxo SIM leverer dem.'):'')
    :basis==='cost'?(anyEstimate?L('Saxo SIM has no reliable current values. Estimates marked LIVE use Saxo LIVE quotes in each instrument’s currency; without an exchange rate, tiles are sized by purchase value.','Saxo SIM har ingen pålidelige aktuelle værdier. Skøn markeret LIVE bruger Saxo LIVE-kurser i værdipapirets valuta; uden en valutakurs har felterne størrelse efter købsværdi.'):L('Saxo has not supplied reliable current values, so tiles are sized by purchase value and current changes show as —.','Saxo har ikke leveret pålidelige aktuelle værdier, så felterne har størrelse efter købsværdi, og aktuelle ændringer vises som —.'))
@@ -631,9 +631,9 @@ export function createInvestmentWorkspace({S,e,money,api,post,header,errorText,c
   const weight=view.sizeTotal>0&&finite(v.baseValue)?v.baseValue/view.sizeTotal*100:null;
   patch(panel.querySelector('.inv-focus-head'),`<div class="inv-focus-title">${monogram(h)}<h2 id="inv-focus-title">${e(label(h))}</h2><span class="inv-chip">${e(ticker(h))} · ${e(h.currency||'—')}</span><span class="inv-focus-quote"></span></div><div class="inv-segment inv-ranges" role="group" aria-label="${L('Chart period','Grafperiode')}">${ranges.map(([id,title])=>`<button type="button" data-inv-range="${id}" data-inv-focus="range-${id}" aria-pressed="${range===id}">${title}</button>`).join('')}</div>`);
   const costLabels={commission:L('Opening commission','Kurtage ved køb'),exchangeFee:L('Opening exchange fee','Valutagebyr ved køb'),stampDuty:L('Stamp duty','Stempelafgift'),additionalTransactionCosts:L('Additional transaction costs','Yderligere handelsomkostninger'),externalCharges:L('External charges','Eksterne gebyrer'),performanceFee:L('Performance fee','Resultatgebyr')};
-  const estNote=L('Est. from Saxo LIVE quote','Anslået ud fra Saxo LIVE-kurs'),liveNote=q?`Saxo LIVE · ${time(q.quoteTime)} · ${delayText(q.quoteDelayMinutes)}`:'';
+  const estNote=L('Est. from Saxo LIVE quote','Anslået ud fra Saxo LIVE-kurs'),liveNote=q?`Saxo LIVE · ${saxoResponseMeta(q,{L,locale:locale(),history:false}).join(' · ')}`:'';
   const stats=[[L('Quantity','Antal'),number(h.quantityText),lotsCount>1?`${lotsCount} ${L('purchases','køb')}`:''],[lotsCount>1?L('Average open price','Gns. købskurs'):L('Open price','Købskurs'),price(h.openPrice,h.currency,h.priceDecimals),''],
-   [L('Current price','Aktuel kurs'),price(v.price,v.priceCurrency||h.currency,h.priceDecimals),v.source==='broker'?(finite(h.priceDelayMinutes)&&h.priceDelayMinutes>0?`${L('Delayed','Forsinket')} ${number(h.priceDelayMinutes)} min.`:''):est?liveNote:''],
+   [L('Current price','Aktuel kurs'),price(v.price,v.priceCurrency||h.currency,h.priceDecimals),v.source==='broker'?saxoDelayLabel('quote',h.priceDelayMinutes,L):est?liveNote:''],
    [L('Market value','Markedsværdi'),amount(v.marketValue,v.valueCurrency),est?estNote:''],
    [L('Unrealised trade P&L','Urealiseret handelsresultat'),amount(v.pnl,v.valueCurrency),[change!==null?pct(change):'',est?L('Est., before charges','Anslået, før omkostninger'):''].filter(Boolean).join(' · '),v.pnl],
    [L('Weight','Vægt'),share(weight),weight!==null?(view.estimated?L('Est. share of holdings’ value','Anslået andel af beholdningernes værdi'):L('of holdings’ value','af beholdningernes værdi')):'']];
@@ -671,7 +671,7 @@ export function createInvestmentWorkspace({S,e,money,api,post,header,errorText,c
  function drawQuote(){
   const node=root?.querySelector('.inv-focus-quote'),h=selectedHolding();if(!node||!h)return;
   const v=h.valuation;
-  node.innerHTML=v.price==null?'':`<strong>${price(v.price,v.priceCurrency||h.currency,h.priceDecimals)}</strong>${v.source==='estimate'?'<span class="inv-chip">Saxo LIVE</span>':''}${v.dayChange!==null?`<span class="inv-change" data-tone="${tone(v.dayChange)}"><span class="inv-sr">${L('Today, Saxo LIVE','I dag, Saxo LIVE')}: </span>${pct(v.dayChange)}</span>`:''}`;
+  node.innerHTML=v.price==null?'':`<strong>${price(v.price,v.priceCurrency||h.currency,h.priceDecimals)}</strong>${v.source==='estimate'?`<span class="inv-chip">Saxo LIVE · ${e(saxoDelayLabel('quote',v.quote.quoteDelayMinutes,L))}</span>`:v.source==='broker'?`<span class="inv-chip">${e(saxoDelayLabel('quote',h.priceDelayMinutes,L))}</span>`:''}${v.dayChange!==null?`<span class="inv-change" data-tone="${tone(v.dayChange)}"><span class="inv-sr">${L('Today, Saxo LIVE','I dag, Saxo LIVE')}: </span>${pct(v.dayChange)}</span>`:''}`;
  }
  function drawChartState(message,actions=''){
   const node=root?.querySelector('.inv-chart-state');if(!node)return;
@@ -681,9 +681,8 @@ export function createInvestmentWorkspace({S,e,money,api,post,header,errorText,c
  }
  function retryMarket(){market.blocked=null;market.history=null;for(const [k,x] of market.results)if(x.issue)market.results.delete(k);void marketCycle(false);}
  // Short ranges show the API retrieval time with seconds, so each automatic refresh is visible.
- const sourceMeta=(snap,history)=>['Saxo LIVE',history?`${L('History','Historik')} ${time(snap.historyRetrievedAt||snap.retrievedAt)} · ${L('chart','graf')} ${delayText(snap.chartDelayMinutes)}`:null,
-  ['available','stale'].includes(snap.quoteStatus)?`${L('Quote','Kurs')} ${time(snap.quoteTime)} · ${delayText(snap.quoteDelayMinutes)}`:null,
-  SAXO_SHORT_RANGES.includes(range)&&snap.retrievedAt?`${L('Updated','Opdateret')} ${saxoClock(snap.retrievedAt,locale())}${liveEligible()?' · '+L(`refreshes every ${SAXO_LIVE_REFRESH_MS/1000} s while visible`,`opdateres hvert ${SAXO_LIVE_REFRESH_MS/1000}. sek., mens siden er synlig`):''}`:null].filter(Boolean).map(e).join(' · ');
+ const sourceMeta=(snap,history)=>['Saxo LIVE',...saxoResponseMeta(snap,{L,locale:locale(),history}),
+  SAXO_SHORT_RANGES.includes(range)&&liveEligible()?L(`refreshes every ${SAXO_LIVE_REFRESH_MS/1000} s while visible`,`opdateres hvert ${SAXO_LIVE_REFRESH_MS/1000}. sek., mens siden er synlig`):null].filter(Boolean).map(e).join(' · ');
  function drawMarket(){
   drawQuote();drawMarketAuth();
   const meta=root?.querySelector('.inv-chart-meta'),h=selectedHolding();if(!meta||!h)return;
@@ -701,10 +700,9 @@ export function createInvestmentWorkspace({S,e,money,api,post,header,errorText,c
   }
   drawChartState('');
   const first=snap.bars[0].close,last=snap.bars.at(-1).close,low=Math.min(...snap.bars.map(b=>b.close)),high=Math.max(...snap.bars.map(b=>b.close)),c=snap.currency;
-  const warning=snap.historyStatus==='stale'||snap.stale?L('Not refreshed — showing the last Saxo snapshot.','Ikke opdateret — viser seneste Saxo-øjebliksbillede.'):'';
   // Intraday gaps are compressed on the time axis, so one muted line says when Saxo sent no samples; nothing is filled in.
   const gaps=saxoGapNote({missing:snap.missingIntervals,interval:snap.interval},L);
-  meta.innerHTML=`<span>${sourceMeta(snap,true)}${warning?` · <span role="status">${e(warning)}</span>`:''}</span>${gaps?`<span class="inv-chart-gaps">${e(gaps)}</span>`:''}<span class="inv-sr">${e(`${L('Closing prices','Lukkekurser')} ${price(first,c,h.priceDecimals)} → ${price(last,c,h.priceDecimals)}, ${L('range','interval')} ${price(low,c,h.priceDecimals)}–${price(high,c,h.priceDecimals)}.`)}</span><span>${L('Dashed line: your average open price.','Stiplet linje: din gennemsnitlige købskurs.')} <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">${L('Charting by TradingView','Grafer fra TradingView')}</a></span>`;
+  meta.innerHTML=`<span>${sourceMeta(snap,true)}</span>${gaps?`<span class="inv-chart-gaps">${e(gaps)}</span>`:''}<span class="inv-sr">${e(`${L('Closing prices','Lukkekurser')} ${price(first,c,h.priceDecimals)} → ${price(last,c,h.priceDecimals)}, ${L('range','interval')} ${price(low,c,h.priceDecimals)}–${price(high,c,h.priceDecimals)}.`)}</span><span>${L('Dashed line: your average open price.','Stiplet linje: din gennemsnitlige købskurs.')} <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">${L('Charting by TradingView','Grafer fra TradingView')}</a></span>`;
   if(chartSnap!==snap)void drawChart();
  }
  async function drawChart(){
@@ -731,6 +729,7 @@ export function createInvestmentWorkspace({S,e,money,api,post,header,errorText,c
   try{
    const snap=investmentMarketData(await api('markets/chart?symbol='+encodeURIComponent(symbol)+'&range='+period,{signal:controller.signal}));
    if(!snap)throw {code:'SAXO_MARKET_DEPLOYMENT_REQUIRED'};
+   if(K(snap.symbol)!==K(symbol)||snap.range&&snap.range!==period)throw {code:'SAXO_MARKET_DATA_MISMATCH'};
    market.available=true;return snap;
   }finally{lastMarketAt=Date.now();}
  }
@@ -751,7 +750,7 @@ export function createInvestmentWorkspace({S,e,money,api,post,header,errorText,c
     if(ignored(err)){market.history=null;return;}
     const issue=investmentMarketIssue(err),old=previous?.snap;
     // Only a transient failure may keep earlier bars, explicitly stale and never as a usable quote.
-    const kept=issue.kind==='transient'&&old?.bars.length?{...old,stale:true,historyStatus:'stale',quoteStatus:old.quoteStatus==='available'?'stale':old.quoteStatus}:null;
+    const kept=issue.kind==='transient'&&old?.bars.length?saxoRetainedSnapshot(old):null;
     market.history={key,period,snap:kept,issue,at,loading:false};
     if(issue.global)block(issue);
    }
@@ -804,7 +803,7 @@ export function createInvestmentWorkspace({S,e,money,api,post,header,errorText,c
    const entry=quoteEntry(watchSymbol(x)),snap=entry?.snap,ok=snap?.quoteStatus==='available'&&snap.price>0,change=ok?investmentDayChange(snap):null,bars=entry?.period==='1d'?snap?.bars:null;
    const reason=ok?'':market.blocked?marketText(market.blocked):entry?.issue&&!snap?marketText(entry.issue):snap?L('Current Saxo LIVE quote unavailable','Aktuel Saxo LIVE-kurs ikke tilgængelig'):'';
    if(ok)priced++;else if(reason)issues.push(reason);
-   return `<a class="inv-wcard" href="#/markets/${encodeURIComponent(x.symbol)}" data-inv-focus="watch-${e(x.id)}"><span class="inv-wcard-top">${monogram(x)}<span><strong>${e(x.name)}</strong><small>${e(ok&&snap.symbol?snap.symbol:x.symbol)}${owned.has(K(x.symbol))?` · ${L('Owned','Ejet')}`:''}</small></span></span>${bars?.length>1?spark(bars,snap.previousClose):'<span class="inv-spark-empty" aria-hidden="true"></span>'}<span class="inv-wcard-price"><span>${ok?price(snap.price,snap.currency,2):'—'}</span>${change!==null?`<span class="inv-change" data-tone="${tone(change)}"><span class="inv-sr">${L('Today','I dag')}: </span>${pct(change)}</span>`:''}</span>${reason?`<span class="inv-sr">${e(reason)}</span>`:''}</a>`;
+   return `<a class="inv-wcard" href="#/markets/${encodeURIComponent(x.symbol)}" data-inv-focus="watch-${e(x.id)}"><span class="inv-wcard-top">${monogram(x)}<span><strong>${e(x.name)}</strong><small>${e(ok&&snap.symbol?snap.symbol:x.symbol)}${owned.has(K(x.symbol))?` · ${L('Owned','Ejet')}`:''}</small></span></span>${bars?.length>1?spark(bars,snap.previousClose):'<span class="inv-spark-empty" aria-hidden="true"></span>'}<span class="inv-wcard-price"><span>${ok?price(snap.price,snap.currency,2):'—'}</span>${change!==null?`<span class="inv-change" data-tone="${tone(change)}"><span class="inv-sr">${L('Today','I dag')}: </span>${pct(change)}</span>`:''}</span>${snap?`<small class="inv-response-meta">${e(saxoResponseMeta(snap,{L,locale:locale(),history:entry?.period==='1d'}).join(' · '))}</small>`:''}${reason?`<span class="inv-sr">${e(reason)}</span>`:''}</a>`;
   }).join('');
   const budget=quoteSymbols().total>12;
   const note=!research?.length?'':market.blocked?marketText(market.blocked):!priced&&issues.length?issues[0]:priced?`Saxo LIVE · ${L('prices and today’s change refresh at most once a minute.','kurser og dagens ændring opdateres højst én gang i minuttet.')}${budget?' '+L('Prices are read for 12 listings, holdings first.','Kurser hentes for 12 noteringer, beholdninger først.'):''}`:'';

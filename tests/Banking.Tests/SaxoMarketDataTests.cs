@@ -162,6 +162,17 @@ public sealed class SaxoMarketDataTests
         Assert.Equal(minutes,(int?)result.QuoteDelayMinutes);Assert.Equal(minutes,(int?)result.ChartDelayMinutes);
         Assert.Equal($"Chart: {text}; quote: {text}. Not an execution quote.",result.Delay);Assert.DoesNotContain("real-time",result.Delay);
     }
+    [Theory]
+    [InlineData(0)]
+    [InlineData(7)]
+    [InlineData(null)]
+    public void Chart_and_quote_keep_independent_reported_delays(int? quoteMinutes)
+    {
+        var body=LiveQuote.Replace("\"DelayedByMinutes\":15",$"\"DelayedByMinutes\":{quoteMinutes?.ToString()??"null"}");
+        var result=Map(body);
+        Assert.Equal(15,result.ChartDelayMinutes);Assert.Equal((decimal?)quoteMinutes,result.QuoteDelayMinutes);
+        Assert.Equal(Now,result.HistoryRetrievedAt);Assert.Equal(Now,result.RetrievedAt);
+    }
     [Fact] public async Task Short_ranges_share_a_fifteen_second_projection_and_longer_ranges_thirty_seconds()
     {
         using var f=new Fixture();var p=f.Provider();var demo=f.Provider(new Workspace());
@@ -228,6 +239,7 @@ public sealed class SaxoMarketDataTests
         Assert.True(stale.Stale);Assert.Equal("stale",stale.HistoryStatus);Assert.Equal(fresh.RetrievedAt,stale.HistoryRetrievedAt);
         Assert.Equal(fresh.Bars,stale.Bars);Assert.Equal("available",stale.QuoteStatus);Assert.Equal(14,stale.Price);Assert.Equal(f.Clock.Now,stale.RetrievedAt);
         Assert.NotNull(fresh.HistorySamples);Assert.Equal(fresh.HistorySamples,stale.HistorySamples);
+        Assert.Equal(fresh.ChartDelayMinutes,stale.ChartDelayMinutes);Assert.Equal(fresh.QuoteDelayMinutes,stale.QuoteDelayMinutes);
         f.Clock.Now=f.Clock.Now.AddMinutes(1);f.Broker.ChartStatus=HttpStatusCode.Forbidden;
         var denied=await p.Chart("MSFT","1mo",default);
         Assert.Equal("denied",denied.HistoryStatus);Assert.Empty(denied.Bars);Assert.False(denied.Stale);Assert.Null(denied.HistoryRetrievedAt);Assert.Equal(14,denied.Price);
@@ -269,6 +281,8 @@ public sealed class SaxoMarketDataTests
         var stale=await p.Chart("MSFT","1mo",default);
         Assert.True(stale.Stale);Assert.Equal(fresh.RetrievedAt,stale.RetrievedAt);Assert.Equal("stale",stale.QuoteStatus);Assert.Equal("stale",stale.HistoryStatus);
         Assert.Equal(2,stale.Diagnostics!.Length);
+        Assert.Equal(fresh.ChartDelayMinutes,stale.ChartDelayMinutes);Assert.Equal(fresh.QuoteDelayMinutes,stale.QuoteDelayMinutes);
+        Assert.Equal(fresh.HistoryRetrievedAt,stale.HistoryRetrievedAt);Assert.Equal(fresh.QuoteTime,stale.QuoteTime);
     }
     [Fact] public async Task Malformed_request_and_throttling_are_distinguishable_from_entitlement()
     {

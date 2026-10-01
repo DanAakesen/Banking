@@ -32,6 +32,7 @@ test('unavailable, denied, stale, unstamped or zero quotes never become a curren
 test('missing open price, quantity or previous close keeps the dependent estimates unknown',()=>{
  const noCost=pairLiveQuote({...holding,avg:null},quote);assert.equal(noCost.pnl,null);assert.equal(noCost.pnlPct,null);assert.equal(noCost.value,4600);
  const noQty=pairLiveQuote({...holding,quantity:null},quote);assert.equal(noQty.value,null);assert.equal(noQty.pnl,null);
+ assert.equal(pairLiveQuote(holding,{...quote,quoteDelayMinutes:'15'}).delayMinutes,null,'string delay is unknown');
  const noPrev=pairLiveQuote(holding,{...quote,previousClose:null,quoteDelayMinutes:null});assert.equal(noPrev.dayPct,null);assert.equal(noPrev.delayMinutes,null);
 });
 
