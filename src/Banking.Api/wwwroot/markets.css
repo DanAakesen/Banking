@@ -887,3 +887,9 @@ main.access{max-width:none;width:100%;margin:0;box-sizing:border-box}
   .scene-card,.main .scene-composed .scene-search .mk-search,.scene-composed>.controls :is(select,.primary,.button-link,.account-picker>summary),.scene-composed .overview-controls>.controls{background:#0d1c27f2;backdrop-filter:none;-webkit-backdrop-filter:none}
 }
 @media (prefers-reduced-motion:reduce){.scene-card{transition:none}:is(a,button).scene-card:hover{transform:none}}
+
+/* Response metadata wraps within each existing watchlist row. */
+.td-row-wrap:has(> .td-response-meta){flex-wrap:wrap}
+.td-row-wrap > .td-response-meta{order:2;flex:0 0 100%;padding:0 12px 10px}
+.td-response-meta{display:block;min-width:0;color:var(--muted);font-size:.7rem;line-height:1.5;white-space:normal;overflow-wrap:anywhere}
+.td-tag{white-space:normal}
