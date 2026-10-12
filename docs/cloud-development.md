@@ -4,6 +4,8 @@ Confirmed by Dan on 1 October 2026: private `https://github.com/DanAakesen/Banki
 
 ## Working rules
 
+12 October 2026: Dan explicitly designated a fresh cloud task after the previous Banking worker became unavailable. Its managed runtime is connected and uses the same published configuration version `31a56238-40b3-4941-a165-b6bd5f8fe86b~cecfgver_6abe128794cc819dbb60b027bdc1d72d`. Repository `/workspace/Banking`, clean `f7dc607` baseline and fetched origin/main matched; .NET 10.0.401, Node 24.19.0 and `/usr/bin/chromium` are available. The frontend-only host on HTTPS 5444 works against Azure. A loopback development certificate was generated for this fresh runtime; no provider credentials or environment secret bindings were added. Banking Main remains the orchestrator; the Jarvis cloud task is unrelated and was not used. See [presentation readiness](presentation-readiness.md).
+
 - Implement, build, test and preview in the required provider cloud agent: Banking Codex Cloud for Codex; GitHub Copilot cloud agent for Copilot. Local clients are for coordination/submission only.
 - Retain local checkouts for read-only reference and coordination. Do not edit source, use local launchers, local databases or local development services. If cloud execution or GitHub access is unavailable, report the blocker without a local fallback.
 - The shared deployed production API still owns business logic, integrations, scheduling and separate Dan/shared fictional Demo data. Cloud test fixtures must remain isolated; never fall back to production credentials or data.

@@ -1,5 +1,9 @@
 # Advisor app coverage — 18 September 2026
 
+## Presentation audit — 12 October 2026
+
+The current [read-access audit and validation](presentation-readiness.md#ai-data-access-audit) traces the actual model schemas, both host routes, authenticated adapter and page APIs. New resources include `saxo_portfolio`, `saxo_status`, `goal_journey`, `transactions`, `budget_progress`, `account_insights` and `overview_wealth`. Rich portfolio status/activity and the UI reconciliation helper are available without weakening Demo/LIVE separation. Existing reads already included raw Saxo acquisition fees and goal journeys in the initial Banking context; the new direct resources make the richer page-specific result explicitly selectable. Original pension files and personal metadata are not advisor context. This batch is validated in Banking cloud and **not deployed**; older results below remain dated evidence.
+
 ## Local revalidation — 22 September 2026
 
 ### Prompt-owned activity lists

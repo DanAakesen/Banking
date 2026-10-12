@@ -581,6 +581,18 @@ Dan reported that his existing Codex Azure Investments tab showed Connected. Ins
 ## Combined Markets and Investments deployment acceptance — 28 September 2026
 See [.azure/deployment-plan.md](../.azure/deployment-plan.md) for SCM ID, package and rollback hashes, test evidence, health/runtime parity and provider limitation. Azure and localhost:5444 both serve 2026.09.28-combined-markets-investments; UI/advisor 49/49 and 113/113, frontend-host 18/18, focused MarketTests 2/2. Demo market search currently returns SAXO_MARKET_SIGN_IN_REQUIRED; real quote/chart/source/delay and owner browser acceptance remain pending a fresh owner sign-in. Demo LIVE brokerage routes remain denied. No trades were placed and LIVE trading remains disabled.
 
+## PRES — presentation readiness (12 October 2026; deployment pending; owner results Not run)
+
+Deadline **22 October 2026**, Demo presentation. Current scope, exact checks and evidence: [presentation readiness](presentation-readiness.md). PFA automatic integration is parked; actual statement/format remains a dependency. No production financial edits were made for this batch.
+
+| ID | Production acceptance after authorized deployment | Current engineering evidence |
+|---|---|---|
+| PRES-01 | Fresh Demo entry → 360 → Accounts → Review/categories → Budgets → Goals. Change a period, navigate back and refresh; verify coherent identity, totals and coverage. | Read-only cloud-preview journey and before/after timings; first 360 fixed-latency median 1387 → 1032 ms. Owner/device rehearsal Not run. |
+| PRES-02 | Ask text and voice for Investments fees/activity, goal contribution journey, selected-month budget actuals, pending transaction page and 360 allocation. Compare source dates/currency/status with the pages. Demo must reject private LIVE requests. | Registered schema + actual host/adapter fixtures pass; live model and microphone accuracy Not run. |
+| PRES-03 | Pension: choose supported JSON → inspect fields → update existing product → reload. Check duplicate, stale version, malformed/oversized input and optional annual projection. Use manual entry for unsupported PFA formats. | Isolated parser and file-backed browser fixtures pass; no production upload/save. Linux cannot run existing SQL LocalDB persistence fixtures. |
+| PRES-04 | Compare Pension with Accounts at desktop/tablet/mobile and dark/light themes. Tab through review form; check focus, empty/error/retry, and single-action header. | 10 isolated browser scenarios, 1440/1024/390, Graphite/Light/Sand, Danish mobile; no overflow/CSP/one-sided borders. |
+| PRES-05 | Verify deployed runtime and asset hashes, then repeat SAXO-DELAY and the core Demo rehearsal. Test owner Dan independently. | Azure still reports 2026.09.29-saxo-session-keepalive; this batch and independent delay labels are not deployed. |
+
 ## SAXO-DELAY — per-response delay labels (1 October 2026; not deployed; owner results Not run)
 
 - SAXO-DELAY-01: On Markets, Investments and watchlists, compare each displayed chart and price with its own API delay field. Positive N: “Chart · N min delayed” / “Price · N min delayed”; zero: “No reported delay”; absent: “Delay unknown”. Repeat in Danish. A chart and quote with different delays must remain different.
