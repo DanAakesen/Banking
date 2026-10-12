@@ -1,4 +1,4 @@
-import {readAppData,proposeAppChange,applyAppChange} from './app-tools.mjs';
+import {resources as appResources,readAppData,proposeAppChange,applyAppChange} from './app-tools.mjs';
 import {prepareSaxoOrder,submitSaxoOrder,verifySaxoOrder} from './saxo-tools.mjs';
 import http from 'node:http';
 import { evidenceValues, ungroundedAmounts } from './public/voice-transcript.js';
@@ -222,7 +222,7 @@ export async function startPrototype({ port = 5450, renderPort = 5451, storageRo
         if(!Array.isArray(next.args.queries)||next.args.queries.length<1||next.args.queries.length>4)throw invalid('Use one to four data queries.');
         for(const query of next.args.queries){
           const key=JSON.stringify(query);if(seen.has(key)||seen.size>=8)continue;seen.add(key);
-          try{const parameters=JSON.parse(query.parametersJson);if(!parameters||Array.isArray(parameters)||typeof parameters!=='object')throw invalid('Invalid query parameters.');researchResults.push({resource:query.resource,parameters,data:await appReader(session,mode,{resource:query.resource,parameters},context)});}
+          try{if(!appResources.includes(query?.resource))throw invalid('Unsupported data resource.');const parameters=JSON.parse(query.parametersJson);if(!parameters||Array.isArray(parameters)||typeof parameters!=='object')throw invalid('Invalid query parameters.');researchResults.push({resource:query.resource,parameters,data:await appReader(session,mode,{resource:query.resource,parameters},context)});}
           catch(error){researchResults.push({resource:query.resource,error:error.status?error.message:'This data source is unavailable.'});}
         }
         if(round===2||seen.size>=8)break;
