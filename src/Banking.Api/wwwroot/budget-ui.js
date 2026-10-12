@@ -124,7 +124,7 @@ export function createBudgetUI({S,t,e,money,api,post,button,select,input,header,
   if(el.id==='bp-destination'){const target=plans.find(p=>p.id===el.value);get('bp-import-name').closest('.field').hidden=!!target;get('bp-import-name').required=!target;get('bp-import-currency').disabled=!!target;if(target)get('bp-import-currency').value=target.currency;return;}
   if(el.closest('#bp-form')){readDraft();if(el.id==='bp-currency'){get('bp-rows').innerHTML=table();notice('Currency changes do not convert amounts.');}requestId=crypto.randomUUID();S.dirty=true;const tr=el.closest('[data-entry-id]');if(tr){const entry=draft.entries.find(x=>x.id===tr.dataset.entryId);tr.querySelector('.bp-monthly').innerHTML=detailMoney(entry.amount===''?null:Number(entry.amount)/entry.intervalMonths,draft.currency);}if(el.dataset.bpField==='type'||el.dataset.bpField==='name'){const matchingEl=mount.querySelector('.bp-matching');if(matchingEl){const wasOpen=matchingEl.open;matchingEl.outerHTML=matching();mount.querySelector('.bp-matching').open=wasOpen;}}if(progress&&mount.querySelector('.bp-progress')){mount.querySelector('.bp-progress').innerHTML=`<p class="muted">${t('Save changes to update budget progress')}</p>`;}mount.querySelectorAll('.bp-entry-actual').forEach(el=>el.innerHTML=`<small>${t('Save to update')}</small>`);refreshTotals();if(get('bp-save-state'))get('bp-save-state').textContent=t('Unsaved changes');validate();}
  }
- async function overviewEmpty(main){const {plan}=await api('budget-plans/active');const actuals=plan?await api('budget-plans/'+plan.id+'/progress'):null;const hasPlans=plan?true:(await api('budget-plans')).plans.length>0;main.insertAdjacentHTML('beforeend',`<section class="section bp-overview"><div class="section-head"><h2>${t(plan?'Active budget':'Budgets')}</h2>${sectionAction(plan?'View budget':hasPlans?'Choose budget':'Create budget','#/budgets'+(plan?'/'+plan.id:hasPlans?'':'/new'))}</div>${plan?`<p>${e(plan.name)} · ${e(plan.currency)} · ${t('Planned monthly amounts')}</p>${summary(plan.monthly,plan.currency,plan.hasIncome)}${progressView(actuals,true)}`:hasPlans?`<p class="muted">${t('No active budget. Choose a saved budget and make it active.')}</p>`:`<h3>${t('No budgets yet')}</h3><p class="muted">${t('Create a budget to plan your income, expenses and savings.')}</p>`}</section>`);return {plan,actuals};}
+ async function overviewEmpty(main,active){const {plan}=active||await api('budget-plans/active');const actuals=plan?await api('budget-plans/'+plan.id+'/progress'):null;const hasPlans=plan?true:(await api('budget-plans')).plans.length>0;main.insertAdjacentHTML('beforeend',`<section class="section bp-overview"><div class="section-head"><h2>${t(plan?'Active budget':'Budgets')}</h2>${sectionAction(plan?'View budget':hasPlans?'Choose budget':'Create budget','#/budgets'+(plan?'/'+plan.id:hasPlans?'':'/new'))}</div>${plan?`<p>${e(plan.name)} · ${e(plan.currency)} · ${t('Planned monthly amounts')}</p>${summary(plan.monthly,plan.currency,plan.hasIncome)}${progressView(actuals,true)}`:hasPlans?`<p class="muted">${t('No active budget. Choose a saved budget and make it active.')}</p>`:`<h3>${t('No budgets yet')}</h3><p class="muted">${t('Create a budget to plan your income, expenses and savings.')}</p>`}</section>`);return {plan,actuals};}
  // Height follows the rendered panel so the chart fills it instead of letterboxing.
  function forecastGraph(model,a,plan,h){
   const L=(en,da)=>S.lang==='da'?da:en,num=n=>Math.round(n).toLocaleString(S.lang==='da'?'da-DK':'en-GB');
@@ -153,11 +153,16 @@ export function createBudgetUI({S,t,e,money,api,post,button,select,input,header,
   panel.graphObserver=new ResizeObserver(([entry])=>{if(!panel.isConnected){panel.graphObserver.disconnect();return;}const {width,height}=entry.contentRect;if(!width||!height)return;const h=Math.round(Math.max(200,Math.min(900,540*height/width)));if(Math.abs(h-current)<4)return;current=h;wrap.innerHTML=forecastGraph(model,a,plan,h);});
   panel.graphObserver.observe(wrap);
  }
- async function overview(main){
-  const {plan}=await api('budget-plans/active');if(!plan)return overviewEmpty(main);
+ async function loadOverview(){
+  const {plan}=await api('budget-plans/active');if(!plan)return {plan};
   const actuals=await api('budget-plans/'+plan.id+'/progress');
+  const flow=await api(`cash-flow?from=${actuals.from}&to=${actuals.to}&currency=${plan.currency}`).catch(()=>null);
+  return {plan,actuals,flow};
+ }
+ async function overview(main,loaded){
+  const {plan,actuals,flow}=loaded||await loadOverview();if(!plan)return overviewEmpty(main,{plan});
   const loadFlow=a=>api(`cash-flow?from=${a.from}&to=${a.to}&currency=${plan.currency}`).catch(()=>null);
-  const flow=await loadFlow(actuals);const panel=document.createElement('section');panel.className='section bp-overview budget-visual';main.append(panel);
+  const panel=document.createElement('section');panel.className='section bp-overview budget-visual';main.append(panel);
   let revision=0;const render=(a,f)=>{window.dispatchEvent(new CustomEvent('banking:section-context',{detail:{section:'budget',id:plan.id,month:a.from,from:a.from,to:a.to,currency:plan.currency}}));panel.innerHTML=budgetVisual(plan,a,f);fitForecast(panel,plan,a,f);panel.querySelector('input[type=month]').addEventListener('change',async ev=>{if(!ev.target.value||!ev.target.validity.valid)return;const rev=++revision;panel.setAttribute('aria-busy','true');try{const next=await api(`budget-plans/${plan.id}/progress?month=${ev.target.value}-01`),nextFlow=await loadFlow(next);if(rev===revision&&panel.isConnected)render(next,nextFlow);}catch(err){notice(errorText(err));}finally{if(rev===revision)panel.removeAttribute('aria-busy');}});};render(actuals,flow);return {plan,actuals};
  }
 
@@ -172,7 +177,7 @@ export function createBudgetUI({S,t,e,money,api,post,button,select,input,header,
   const row=mount.querySelector(`[data-entry-id="${CSS.escape(result.entryId||'')}"]`);row?.classList.add('advisor-change-highlight');
   mount.querySelector('#bp-summary')?.classList.add('advisor-change-highlight');
  }
- return {render,click,changed,submit,clear,overview,legacy,refreshFromAdvisor};
+ return {render,click,changed,submit,clear,overview,loadOverview,legacy,refreshFromAdvisor};
 }
 
 export function budgetForecast(actuals,flow){

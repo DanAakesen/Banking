@@ -822,6 +822,9 @@ main.access{max-width:none;width:100%;margin:0;box-sizing:border-box}
 .scene-composed>.controls select{padding-inline:16px 34px}
 .scene-composed .overview-controls{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
 .scene-composed .overview-controls>.controls{padding:2px 6px}
+/* A single action uses the same glass group without an empty second grid column. */
+.main>.scene-composed .overview-controls>.controls:has(>button:only-child){grid-template-columns:minmax(0,1fr);width:auto;padding:2px}
+.main>.scene-composed .overview-controls>.controls>button:only-child{border-color:transparent;background:transparent;box-shadow:none}
 /* A group that wraps (two Saxo connections) keeps rounded corners; a single row is still a full pill, as the radius is clamped to half its height. */
 .main>.scene-composed .overview-controls>.controls{border-radius:26px}
 /* Two Saxo connections make wide controls: they wrap instead of pushing the title away. */

@@ -35,7 +35,7 @@ public static class PlanningEndpoints
         app.MapPost("/api/research",(ResearchInput input,ResearchService service,CancellationToken ct)=>service.Save(null,input,ct));
         app.MapPut("/api/research/{id:guid}",(Guid id,ResearchInput input,ResearchService service,CancellationToken ct)=>service.Save(id,input,ct));
         app.MapDelete("/api/research/{id:guid}",async(Guid id,string version,ResearchService service,CancellationToken ct)=>{await service.Delete(id,version,ct);return Results.NoContent();});
-        app.MapPost("/api/pension/statement-preview", (System.Text.Json.JsonElement input) => Banking.Api.Providers.PensionStatement.Preview(input));
+        app.MapPost("/api/pension/statement-preview", (System.Text.Json.JsonElement input, TimeProvider clock) => Banking.Api.Providers.PensionStatement.Preview(input, clock));
         app.MapGet("/api/wealth", (WealthService service, CancellationToken ct) => service.List(ct));
         app.MapGet("/api/wealth/overview", (string currency, WealthService service, CancellationToken ct) => service.Overview(currency, ct));
         app.MapGet("/api/wealth/summary", (string currency, WealthService service, CancellationToken ct) => service.Summary(currency, ct));

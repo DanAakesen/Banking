@@ -55,7 +55,7 @@ public sealed class WealthService(BankingDb db, TimeProvider clock, Workspace wo
         Check.Text(input.Name,120);Check.Text(input.Provider,120);Check.Text(input.SourceNote,500);Check.Currency(input.Currency);
         Check.That(input.Kind is "Investment" or "Pension","INVALID_WEALTH_KIND");
         Check.That(input.Value is >=0 and <=100_000_000 && Math.Round(input.Value,2)==input.Value,"INVALID_WEALTH_VALUE");
-        Check.That(input.AsOf.Year>=1900&&input.AsOf<=DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime),"INVALID_VALUATION_DATE");
+        Check.That(input.AsOf.Year>=1900&&input.AsOf<=DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeBySystemTimeZoneId(clock.GetUtcNow(),"Europe/Copenhagen").DateTime),"INVALID_VALUATION_DATE");
         Check.That(input.AnnualPension is null or >=0 and <=10_000_000,"INVALID_PENSION_INCOME");
         Check.That(input.RetirementAge is null or >=40 and <=100,"INVALID_RETIREMENT_AGE");
         Check.That(input.Kind=="Pension"||input.AnnualPension is null&&input.RetirementAge is null,"INVALID_INVESTMENT_PROJECTION");

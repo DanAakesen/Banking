@@ -2,14 +2,15 @@ import {pathToFileURL} from 'node:url';
 import path from 'node:path';
 const assetRoot=process.env.BANKING_ASSET_ROOT;
 const assetModule=name=>assetRoot?pathToFileURL(path.join(assetRoot,name)):new URL('../../src/Banking.Api/wwwroot/'+name,import.meta.url);
-const {wealthPeriodSeries,pensionPeriod}=await import(assetModule('overview.js'));
+const {wealth360Model,wealthPeriodSeries,pensionPeriod}=await import(assetModule('overview.js'));
+const {investmentSummary}=await import(assetModule('wealth-ui.js'));
 import {randomUUID} from 'node:crypto';
 import {verifySaxoOrder} from './saxo-tools.mjs';
 import {bankingRequest} from './banking-context.mjs';
 const {budgetForecast}=await import(assetModule('budget-ui.js'));
 const fail=message=>{throw Object.assign(new Error(message),{status:400});};
 const guid=id=>{if(!/^[a-f0-9-]{36}$/i.test(id||''))fail('Choose an existing record ID.');return id;};
-export const resources=['saxo','saxo_orders','saxo_instruments','saxo_ticket','saxo_order_status','market_search','market_chart','balance_history','transaction_detail','wealth_history','budget_forecast','upcoming','cash_flow','trends','goals','loans','wealth','watchlist','categories','rules','review_history','accounts'];
+export const resources=['saxo','saxo_portfolio','saxo_status','saxo_orders','saxo_instruments','saxo_ticket','saxo_order_status','market_search','market_chart','balance_history','transactions','transaction_detail','overview_wealth','wealth_history','budget_progress','budget_forecast','upcoming','account_insights','cash_flow','trends','goals','goal_journey','loans','wealth','watchlist','categories','rules','review_history','accounts'];
 export const editable={
  accounts:['customName'],
  goals:['name','description','target','currency','scope','accountId','deadline','notes','references','planStart','startingBalance','monthlyContribution','contributionDay'],
@@ -20,11 +21,12 @@ export const editable={
 const paths={accounts:'accounts',goals:'goals',loans:'loans',wealth:'wealth',watchlist:'research',categories:'categories',rules:'rules'};
 export async function readAppData(session,mode,query,context={},request=bankingRequest){
  if(!resources.includes(query.resource))fail('Unsupported data resource.');
- const section={wealth_history:'wealth',budget_forecast:'budget',cash_flow:'cashFlow',trends:'cashFlow',market_chart:'markets',saxo:'markets',saxo_orders:'markets'}[query.resource];
+ const section={wealth_history:'wealth',budget_forecast:'budget',budget_progress:'budget',cash_flow:'cashFlow',trends:'cashFlow',market_chart:'markets',saxo:'markets',saxo_portfolio:'markets',saxo_status:'markets',saxo_orders:'markets'}[query.resource];
  const p={...(context.screen?.sections?.[section]||{}),...(query.parameters||{})},get=(path)=>request(session,mode,'/api/'+path),from=p.from||context.from,to=p.to||context.to,currency=p.currency||context.currency||'DKK';
  const params=o=>new URLSearchParams(Object.entries(o).filter(([,v])=>v!==null&&v!==undefined)).toString();
  const period=()=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(from||'')||!/^\d{4}-\d{2}-\d{2}$/.test(to||'')||from>to)fail('Choose a valid date range.');return params({from,to,currency,accountId:p.accountId});};
  switch(query.resource){
+ case 'saxo_portfolio':case 'saxo_status':{const environment=p.environment||'SIM';if(!['SIM','LIVE'].includes(environment)||environment==='LIVE'&&mode!=='Live')fail('LIVE Saxo requires the owner workspace.');const data=await get('investments/saxo/'+(query.resource==='saxo_portfolio'?'portfolio':'status')+'?environment='+environment);return query.resource==='saxo_portfolio'?{...data,summary:investmentSummary(data.portfolio)}:data;}
  case 'saxo':{const environment=p.environment||'SIM';if(!['SIM','LIVE'].includes(environment)||environment==='LIVE'&&mode!=='Live')fail('LIVE Saxo requires the owner workspace.');return request(session,mode,'/api/investments/saxo/preview?environment='+environment,{});}
  case 'saxo_orders':{const environment=p.environment||'SIM';if(!['SIM','LIVE'].includes(environment)||environment==='LIVE'&&mode!=='Live')fail('LIVE Saxo requires the owner workspace.');return get('investments/saxo/orders?environment='+environment);}
  case 'saxo_instruments':if(p.environment&&p.environment!=='SIM')fail('Trading tools support SIM only.');if(typeof p.q!=='string'||!p.q.trim()||p.q.length>80)fail('Provide a Saxo instrument search term.');return get('investments/saxo/instruments?environment=SIM&'+params({q:p.q}));
@@ -37,11 +39,16 @@ export async function readAppData(session,mode,query,context={},request=bankingR
   if(data?.source!=='Saxo LIVE')throw Object.assign(new Error('Saxo market data is unavailable. No alternative price source was used.'),{status:503});
   return data;}
  case 'balance_history':return get('accounts/'+guid(p.accountId)+'/balance-history?'+period());
+ case 'goal_journey':return get('goals/'+guid(p.id)+'/journey');
+ case 'transactions':{const offset=p.offset??0,limit=p.limit??100;if(!Number.isInteger(offset)||offset<0||offset>100000||!Number.isInteger(limit)||limit<1||limit>200)fail('Choose a valid transaction page.');if(p.status!=null&&!['BOOK','PDNG','CNCL','HOLD','OTHR','RJCT','SCHD'].includes(p.status))fail('Choose a supported transaction status.');if(p.search!=null&&(typeof p.search!=='string'||p.search.length>200))fail('Use a search term up to 200 characters.');return get('transactions?'+period()+'&'+params({offset,limit,status:p.status,categoryId:p.categoryId?guid(p.categoryId):null,search:p.search}));}
  case 'transaction_detail':return get('transactions/'+guid(p.id));
+ case 'overview_wealth':{const data=await get('advisor-context?'+period());const accounts=(data.accounts||[]).filter(a=>a.currency===currency);const total=accounts.length&&accounts.every(a=>a.availableBalance?.currency===currency&&typeof a.availableBalance.amount==='number')?accounts.reduce((n,a)=>n+a.availableBalance.amount,0):null;return {source:data.source,mode:data.mode,currency,generatedAt:data.generatedAt,accounts,statements:data.statements?.filter(r=>r.currency===currency)??null,valueOrder:['availableCash','investments','pension'],model:wealth360Model(total,data.statements??null,currency),basis:'360 asset allocation: available bank cash plus dated non-cash statements. Savings already included in cash. Missing asset classes make the total partial. No FX, debt deduction or Saxo SIM. Recorded net wealth uses booked cash and is a different measure.'};}
  case 'wealth_history':{period();const data=await get('wealth/overview?'+params({currency}));const history=data.visuals?.investment?.history||[];const end=(data.records||[]).filter(r=>r.kind==='Pension'&&r.currency===currency).map(r=>r.asOf).sort()[0]?.slice(0,10);const pensionHistory=end?[{date:new Date(Date.parse(end)-180*86400000).toISOString().slice(0,10)},{date:end}]:[];const investment=wealthPeriodSeries(history,from,to);return {...data,selectedPeriod:{from,to,investment,investmentReturnPercent:investment.length>1&&investment[0].value>0?(investment.at(-1).value/investment[0].value-1)*100:null,pension:pensionPeriod(data.visuals?.pension,pensionHistory,from,to)}};}
  case 'budget_forecast':{const id=p.id||context.activeBudget?.plan?.id;if(!id)fail('Choose a budget.');const actual=await get('budget-plans/'+guid(id)+'/progress?'+params({month:p.month}));const flow=await get('cash-flow?'+params({from:actual.from,to:actual.to,currency:actual.currency}));return {actual,forecast:budgetForecast(actual,flow),basis:'Daily spending run rate; estimate, not a scheduled payment forecast.'};}
+ case 'budget_progress':{const id=p.id||context.activeBudget?.plan?.id;if(!id)fail('Choose a budget.');return get('budget-plans/'+guid(id)+'/progress?'+params({month:p.month}));}
  case 'upcoming':return get('upcoming-estimates?'+params({from:p.from||new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Copenhagen'}).format(new Date()),days:p.days||30,currency,accountId:p.accountId}));
  case 'cash_flow':return get('cash-flow?'+period());
+ case 'account_insights':return get('account-insights?'+period());
  case 'trends':return get('trends?'+period());
  case 'review_history':return get('review/history?'+params({offset:p.offset||0}));
  default:return get(paths[query.resource]);

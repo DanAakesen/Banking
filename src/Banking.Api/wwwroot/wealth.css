@@ -2,6 +2,13 @@
 .loan-hero,.loan-card,.loan-grid>.panel{border:1px solid var(--line);border-radius:24px}.loan-grid>.panel{padding:24px;background:var(--surface)}
 .wealth-layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(290px,1fr);gap:24px}.wealth-value{font-size:2rem;margin:18px 0}.wealth-summary{align-self:start;background:var(--surface)}.wealth-summary h2{margin-top:0}.wealth-row{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:12px 0;flex-wrap:wrap}.wealth-total{margin-top:12px;font-size:1.15rem}.wealth-provider{margin-top:24px}.wealth-provider a{display:inline-block;margin:12px 0}.wealth-summary .muted{font-size:.85rem;line-height:1.6}@media(max-width:1050px){.wealth-layout{grid-template-columns:1fr}.wealth-summary{order:-1}}
 .pension-import{margin-bottom:24px}.pension-import input{max-width:100%}
+.pension-import,.wealth-layout .loan-card{background:var(--surface);border-radius:var(--radius)}
+.pension-import h2,.wealth-layout h2{font-family:Georgia,serif;font-weight:400;font-size:1.5rem}
+.pension-import label{display:block;margin-bottom:8px;color:var(--ink)}
+.pension-import input::file-selector-button{font:inherit;color:var(--ink);background:var(--raised);border:1px solid var(--line);border-radius:var(--radius);padding:8px 12px;margin-right:12px;cursor:pointer}
+.wealth-layout .loan-title{align-items:flex-start;flex-wrap:wrap}
+.wealth-layout .loan-title h2,.wealth-row>span{overflow-wrap:anywhere;min-width:0}
+@media(max-width:1050px){.wealth-layout .wealth-summary{order:0}}
 .research-notes{white-space:pre-wrap;overflow-wrap:anywhere}.loan-form textarea{width:100%;min-width:0}
 .saxo-callback{overflow-wrap:anywhere}
 

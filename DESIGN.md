@@ -463,6 +463,7 @@ What goes on the photo, per page:
 | Goals | Saved across goal accounts | Goal count, Monthly savings plan, Closest-to-target goal with a progress ring |
 | Markets | Selected instrument's Saxo LIVE price, with the change against the previous close and the provider delay (trading desk, 28 September 2026) | Day range, Quote time, Your position; controls: instrument search, Saxo environment and connection, with the read time |
 | Investments | Saxo SIM account value, with the cash/invested bar when it reconciles, and the simulation note | Booked cash (with Available to trade), Invested (with holding count), Unrealised trade P&L (with % of purchase value when known); status and refresh in the control pill, with the read time beneath it |
+| Pension | Recorded statement value in the selected currency; unknown when none recorded | Recorded product count and oldest statement date; one Add statement value action and manual-update status, using the shared Accounts control group |
 
 Implementation:
 - `composeScene` in app.js builds the stage from each page's own rendered summary and hides that summary (`.scene-sourced`). Page actions, live updates and filters therefore keep working.
@@ -471,6 +472,8 @@ Implementation:
 - The glass is always light-on-dark because the photo is theme-independent.
 - Reduced transparency uses solid dark surfaces.
 - Styles are in the "Composed scenic headers" block at the end of markets.css.
+
+12 October 2026: Pension follows this same composition, photo and dimensions. It reuses the existing JSON preview and versioned statement form. Imported rows can update an existing product after review; the form shows its previous date/value. File support/errors, optional projections and current automatic-integration status are explicit. Product cards precede the secondary wealth summary on narrow screens. Single-action glass groups use one grid column, avoiding Accounts' two-field column allocation when only a button is present. Evidence: [presentation readiness](docs/presentation-readiness.md).
 
 Sizes: the photo is 360 px on desktop and about 320 px on tablet. On phone it is content-sized, about 190–380 px, with the controls under the title and the cards swipeable.
 
