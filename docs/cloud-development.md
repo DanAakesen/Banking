@@ -2,6 +2,41 @@
 
 Confirmed by Dan on 1 October 2026: private `https://github.com/DanAakesen/Banking` is the single source of truth for every agent and provider. All development uses cloud-hosted compute connected to this repository. Codex must use the current published private Banking cloud environment connected to `DanAakesen/Banking`; follow the [verified cloud execution route](#published-replacement-and-durable-worker--1-october-2026). The obsolete legacy environment ID is not the current routing target. GitHub Copilot must use GitHub Copilot cloud agent and its GitHub Actions-powered development environment for this repository. Other providers must use their own cloud-hosted agent environment connected to this repository. Local clients may only coordinate or submit work to the required cloud agent. Local IDE agent mode, local CLI implementation and local app execution are prohibited. If the required cloud environment is unavailable, report the blocker; do not substitute local execution or another environment.
 
+## Coordinator and sole developer protocol — 15 October 2026
+
+Dan's direct instruction in **Banking Main**, “Then set that up, so you can orchestrate and the other session can develop,” confirms the existing two-chat arrangement. The coordinator supplied that human-turn reference with the setup delegation; this protocol does not invent an environment switch or create another worker.
+
+| Role | Existing route and responsibility |
+|---|---|
+| Coordinator | **Banking Main**, app thread `01a07af7-0da1-7fe2-9017-0dee7c413b9a`, host `local`. Collect Dan's requirements and human approvals, send bounded already-authorized work, review results and independently verify GitHub/Azure evidence. Local execution remains coordination only. |
+| Sole developer | This existing **Banking New CC** chat, selected by Main's supported app route, using the published private Banking cloud environment and `/workspace/Banking` → `DanAakesen/Banking`. Implement, review, validate, commit, push and merge under the standing workflow. Resolve the existing chat's actual app ID from Main's thread metadata when needed; do not substitute a display name, host ID, runtime/configuration ID or a new chat. |
+| Collection | Main's active desktop heartbeat **Coordinate Banking cloud development**, every two minutes, as confirmed by the coordinator's setup handoff. It collects developer status, reviews finished work and sends the next already-authorized step. This worker does not recreate or reschedule it. |
+
+The old **Banking New** worker stays paused. Jarvis is a separate project/environment. Main must explicitly release ownership and hand off work before replacing the sole developer; never run duplicate code or shared-Demo writers.
+
+### Dispatch and authorization
+
+- Main sends the task, expected outcome, current GitHub baseline/branch, ownership, existing human authorization and material limits. The developer verifies the Banking cloud runtime/repository and refreshes current refs before editing; preserve other work and use a `codex/` task branch.
+- Dan authorizes routine messages **in both directions only between these two existing Banking chats**. Before the first reciprocal send, verify the referenced direct human instruction through supported trusted thread evidence when the messaging capability is exposed. Do not turn routine implementation or a validated merge into another approval request.
+- Product decisions, identity/consent steps, unavailable required checks and deployment authorization are reported to Main for resolution with Dan. For financial operations, retain the actual human confirmation and its precise scope; a coordinator summary, heartbeat tick, completed test or standing merge authorization does not create financial permission. Do independent safe work while a dependent decision is pending.
+- Source changes remain in the published Banking cloud environment. No local implementation, new chat, environment switch, new credentials, deployment or financial action is authorized by this communication setup.
+
+### Completion and blockers
+
+On completion or a meaningful blocker, send **one concise report to Banking Main** if the supported messaging tool is exposed and the direct human authorization has been verified. Always leave the same accurate outcome in a final reply in Banking New CC so Main's heartbeat can collect it. Report:
+
+1. What changed and whether the requested outcome is complete or blocked.
+2. Repository/branch, exact pushed source SHA, remote `main`/integration SHA and PR URL/state; distinguish unpushed work and verify the remote result.
+3. Appropriate validation and concrete evidence paths, including failed or unavailable checks. Scale checks to the change; documentation-only work needs diff/scope/link review rather than an application rebuild.
+4. Source-versus-deployed state: current observed Azure build/assets when relevant, whether a deployment occurred and what remains pending. A Git merge is not deployment evidence.
+5. Any blocker, the exact decision or access needed and the next already-authorized step. Route new product, identity, financial or release decisions through Main; do not infer approval from elapsed time.
+
+The heartbeat stays quiet when state is unchanged or non-actionable. Repeated polls, acknowledgement chains and copied progress updates must not produce message loops. Do not redispatch completed work; the applied Demo repair is already verified and must not be rerun as setup. If no authorized task remains, leave a clear ready/waiting state for Main.
+
+### Capability observation and fallback
+
+At setup in Banking New CC, tool discovery exposed no supported reciprocal `send_message_to_thread` capability. The supported attempt to read Main's referenced human turn returned **“connection closed before server request was answered”**; that direct read was not verified in the worker. No reciprocal message was sent or claimed. The coordinator's configured two-minute heartbeat is therefore the collection route for the worker's final report. Recheck supported capabilities when needed, and send only after the required trusted authorization evidence is accessible. Do not bypass missing tools with private app files, another channel or a new chat, and do not ask Dan to repeat already-authorized routine work solely because reciprocal messaging is unavailable.
+
 ## Working rules
 
 12 October 2026: Dan explicitly designated a fresh cloud task after the previous Banking worker became unavailable. Its managed runtime is connected and uses the same published configuration version `31a56238-40b3-4941-a165-b6bd5f8fe86b~cecfgver_6abe128794cc819dbb60b027bdc1d72d`. Repository `/workspace/Banking`, clean `f7dc607` baseline and fetched origin/main matched; .NET 10.0.401, Node 24.19.0 and `/usr/bin/chromium` are available. The frontend-only host on HTTPS 5444 works against Azure. A loopback development certificate was generated for this fresh runtime; no provider credentials or environment secret bindings were added. Banking Main remains the orchestrator; the Jarvis cloud task is unrelated and was not used. See [presentation readiness](presentation-readiness.md).

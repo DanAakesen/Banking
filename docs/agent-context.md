@@ -1,3 +1,11 @@
+## Coordinator and sole cloud developer — confirmed 15 October 2026
+
+Dan designated **Banking Main** as coordinator and this existing **Banking New CC** chat as the sole developer. Main's app thread is `01a07af7-0da1-7fe2-9017-0dee7c413b9a` on host `local`; development remains in the published Banking cloud environment at `/workspace/Banking`, connected to `DanAakesen/Banking`. The older **Banking New** worker stays paused; Jarvis is outside this project. Use these existing routes; no new chat or environment is implied.
+
+Follow the [coordination and completion protocol](cloud-development.md#coordinator-and-sole-developer-protocol--15-october-2026). Dan authorized routine coordination messages in both directions between these two Banking chats. On completion or a meaningful blocker, report verified source/main/PR identities, validation, source-versus-deployed state, remaining blockers and the next already-authorized step; always leave an accurate final report in Banking New CC. Banking Main maintains the **Coordinate Banking cloud development** desktop heartbeat every two minutes and collects that report when reciprocal messaging is unavailable. Keep quiet while state is unchanged; do not create message loops.
+
+Product decisions, identity steps, deployment approval and new financial authorization go through Main to Dan. Preserve the actual human confirmation and its scope for financial operations; routine coordination is not financial or deployment consent. The completed Demo repair must not be reapplied. Annotation/readiness source remains undeployed until a separately authorized release.
+
 ## Demo repair and annotation compatibility — 15 October 2026
 
 See [repair and verification](demo-repair-2026-10-15.md). The authorized synthetic shared Demo repair is applied through deployed normal APIs and repeat application is a no-op; manual classifications and financial definitions are preserved. Exact current Codex overlay/cursor CSP hashes and the synthetic bill-counterparty source correction are prepared and require deployment. Do not duplicate the repair or redeploy without authorization. Actual embedded-browser annotation acceptance remains separate from source-derived Chromium checks.
