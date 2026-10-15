@@ -1,14 +1,20 @@
 import hashlib
+import http.client
 import importlib.util
+import io
 import json
 import shlex
+import socket
+import ssl
+import traceback
 from types import SimpleNamespace
 import tempfile
 import unittest
 import urllib.error
 from argparse import Namespace
+from contextlib import redirect_stderr
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import zipfile
 
 
@@ -19,6 +25,14 @@ SPEC.loader.exec_module(deploy)
 
 
 class DeployBankingTests(unittest.TestCase):
+    def response(self, body, headers=None):
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.status = 200
+        response.headers = headers or {}
+        response.read.return_value = body
+        return response
+
     def package(self, folder):
         files = {"Banking.Api.dll": b"binary", "wwwroot/index.html": b"<html>"}
         archive_path = folder / "banking-release.zip"
@@ -121,6 +135,164 @@ class DeployBankingTests(unittest.TestCase):
             status, body, _ = deploy.request("GET", deploy.APP_URL + "/api/accounts", allow_http_error=True)
         self.assertEqual((status, body), (401, b""))
 
+    def test_request_errors_classify_without_remote_text_and_keep_limits(self):
+        secret = "PRIVATE_REMOTE_DETAIL"
+        errors = [(TimeoutError(secret), "timeout"),
+                  (urllib.error.URLError(TimeoutError(secret)), "timeout"),
+                  (urllib.error.URLError(socket.gaierror(secret)), "dns"),
+                  (urllib.error.URLError(ssl.SSLError(secret)), "tls"),
+                  (ConnectionResetError(secret), "connection"),
+                  (http.client.IncompleteRead(secret.encode()), "protocol"),
+                  (urllib.error.URLError(secret), "network"), (OSError(secret), "network")]
+        for error, category in errors:
+            with self.subTest(category=category, error=type(error).__name__):
+                output = io.StringIO()
+                url = deploy.SCM_URL + "/api/command?signature=" + secret
+                with redirect_stderr(output), \
+                     patch.object(deploy.urllib.request.OpenerDirector, "open", side_effect=error) as opened:
+                    try:
+                        with deploy.capture_phase("capture-backup"):
+                            deploy.request("POST", url, token=secret, body=secret.encode(), timeout=180)
+                    except deploy.ReleaseError as failure:
+                        rendered = "".join(traceback.format_exception(failure))
+                    else:
+                        self.fail("Request failure was swallowed")
+                events = [json.loads(line) for line in output.getvalue().splitlines()]
+                failed = next(e for e in events if e["event"] == "app-service-request" and e["outcome"] == "failed")
+                self.assertEqual((failed["phase"], failed["endpoint"], failed["category"]),
+                                 ("capture-backup", "scm-command", category))
+                self.assertEqual(failed["timeoutSeconds"], 180)
+                self.assertIsNone(failed["httpStatus"])
+                self.assertGreaterEqual(failed["elapsedMs"], 0)
+                self.assertEqual(events[-1]["outcome"], "failed")
+                self.assertNotIn(secret, output.getvalue() + rendered)
+                self.assertNotIn("signature", output.getvalue())
+                self.assertEqual(deploy.CURRENT_PHASE.get(), "release")
+                self.assertEqual(opened.call_args.kwargs["timeout"], 180)
+
+    def test_http_failure_evidence_redacts_urls_headers_bodies_and_reason(self):
+        secret = "PRIVATE_HTTP_DETAIL"
+        url = deploy.SCM_URL + "/api/deployments/latest?signature=" + secret
+        for code, allowed in ((401, False), (403, False), (500, False), (302, False), (401, True)):
+            with self.subTest(code=code, allowed=allowed):
+                output = io.StringIO()
+                error = urllib.error.HTTPError(url, code, secret, {"X-Private": secret}, io.BytesIO(secret.encode()))
+                with redirect_stderr(output), patch.object(deploy.urllib.request.OpenerDirector, "open", side_effect=error):
+                    if allowed:
+                        self.assertEqual(deploy.request("GET", url, allow_http_error=True)[:2], (401, b""))
+                    else:
+                        with self.assertRaises(deploy.ReleaseError) as caught:
+                            deploy.request("GET", url, token=secret)
+                        self.assertNotIn(secret, "".join(traceback.format_exception(caught.exception)))
+                event = json.loads(output.getvalue().splitlines()[-1])
+                self.assertEqual((event["endpoint"], event["httpStatus"]), ("scm-latest-deployment", code))
+                self.assertEqual(event["category"], "redirect-refused" if code == 302 else "http")
+                self.assertEqual(event["outcome"], "allowed" if allowed else "failed")
+                self.assertNotIn(secret, output.getvalue())
+                self.assertNotIn("X-Private", output.getvalue())
+
+    def test_response_timing_and_invalid_header_are_sanitized(self):
+        for length, expected in (("2", "succeeded"), ("PRIVATE_HEADER_DETAIL", "failed")):
+            with self.subTest(length=length):
+                output = io.StringIO()
+                with redirect_stderr(output), patch.object(deploy.urllib.request.OpenerDirector, "open",
+                        return_value=self.response(b"ok", {"Content-Length": length})):
+                    if expected == "succeeded":
+                        self.assertEqual(deploy.request("GET", deploy.APP_URL + "/health")[1], b"ok")
+                    else:
+                        with self.assertRaises(deploy.ReleaseError):
+                            deploy.request("GET", deploy.APP_URL + "/health")
+                event = json.loads(output.getvalue().splitlines()[-1])
+                self.assertEqual((event["endpoint"], event["outcome"]), ("app-health", expected))
+                self.assertGreaterEqual(event["elapsedMs"], 0)
+                self.assertNotIn("PRIVATE_HEADER_DETAIL", output.getvalue())
+
+    def test_unknown_endpoint_and_response_bounds_never_echo_private_details(self):
+        secret = "PRIVATE_PATH_DETAIL"
+        output = io.StringIO()
+        with redirect_stderr(output), patch.object(deploy.urllib.request.OpenerDirector, "open",
+                return_value=self.response(b"private response body", {"Content-Length": "21"})):
+            with self.assertRaises(deploy.ReleaseError):
+                deploy.request("GET", deploy.SCM_URL + "/api/vfs/" + secret + "?token=" + secret, max_bytes=1)
+        event = json.loads(output.getvalue().splitlines()[-1])
+        self.assertEqual((event["endpoint"], event["category"]), ("scm-other", "response-bound"))
+        for private in (secret, "private response body", "/api/vfs/", "token="):
+            self.assertNotIn(private, output.getvalue())
+
+    def test_probe_unexpected_output_is_suppressed_and_stops_before_backup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            package, manifest_path, _, sha = self.package(folder)
+            args = Namespace(package=str(package), manifest=str(manifest_path), source_sha=sha,
+                             evidence_dir=str(folder / "evidence"), artifact_digest="digest")
+            output = io.StringIO()
+            with redirect_stderr(output), patch.object(deploy, "verify_azure_context"), \
+                 patch.object(deploy, "read_hosted_baseline", return_value=({}, {}, {})), \
+                 patch.object(deploy, "access_token", return_value="token"), \
+                 patch.object(deploy, "remote_command", return_value="PRIVATE_PROBE_DETAIL") as remote:
+                with self.assertRaises(deploy.ReleaseError) as caught:
+                    deploy.capture(args)
+            remote.assert_called_once_with("token", "pwd")
+            self.assertFalse((folder / "evidence/rollback-manifest.json").exists())
+            self.assertEqual(json.loads(output.getvalue().splitlines()[-1])["phase"], "capture-scm-probe")
+            self.assertNotIn("PRIVATE_PROBE_DETAIL", output.getvalue() + str(caught.exception))
+
+    def test_capture_probe_and_backup_failures_have_distinct_phases_and_no_manifest(self):
+        for phase in ("capture-scm-probe", "capture-backup"):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as temp:
+                folder = Path(temp)
+                package, manifest_path, _, sha = self.package(folder)
+                args = Namespace(package=str(package), manifest=str(manifest_path), source_sha=sha,
+                                 evidence_dir=str(folder / "evidence"), artifact_digest="digest")
+                output = io.StringIO()
+                error = urllib.error.URLError(TimeoutError("PRIVATE_CAPTURE_DETAIL"))
+                results = [error] if phase == "capture-scm-probe" else [
+                    self.response(json.dumps({"ExitCode": 0, "Output": "/home\n"}).encode()), error]
+                with redirect_stderr(output), patch.object(deploy, "verify_azure_context"), \
+                     patch.object(deploy, "read_hosted_baseline", return_value=({}, {"build": "old"}, {"id": "before"})), \
+                     patch.object(deploy, "access_token", return_value="PRIVATE_CAPTURE_DETAIL"), \
+                     patch.object(deploy.urllib.request.OpenerDirector, "open", side_effect=results) as opened:
+                    with self.assertRaises(deploy.ReleaseError):
+                        deploy.capture(args)
+                events = [json.loads(line) for line in output.getvalue().splitlines()]
+                failed = [e for e in events if e["outcome"] == "failed"]
+                self.assertEqual([e["phase"] for e in failed], [phase, phase])
+                self.assertEqual(failed[0]["category"], "timeout")
+                probe = json.loads(opened.call_args_list[0].args[0].data)
+                self.assertEqual(shlex.split(probe["command"]), ["bash", "-c", "pwd"])
+                self.assertEqual(probe["dir"], "/home")
+                self.assertEqual(opened.call_count, 1 if phase == "capture-scm-probe" else 2)
+                self.assertFalse((folder / "evidence/rollback-manifest.json").exists())
+                self.assertNotIn("PRIVATE_CAPTURE_DETAIL", output.getvalue())
+
+    def test_capture_baseline_failure_identifies_runtime_request_before_any_scm_command(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            package, manifest_path, _, sha = self.package(folder)
+            args = Namespace(package=str(package), manifest=str(manifest_path), source_sha=sha,
+                             evidence_dir=str(folder / "evidence"), artifact_digest="digest")
+            output = io.StringIO()
+            with redirect_stderr(output), patch.object(deploy, "verify_azure_context"), \
+                 patch.object(deploy.urllib.request.OpenerDirector, "open", side_effect=[
+                     self.response(b'{"status":"running","environment":"azure"}'),
+                     urllib.error.URLError("PRIVATE_RUNTIME_DETAIL")]) as opened:
+                with self.assertRaises(deploy.ReleaseError):
+                    deploy.capture(args)
+            events = [json.loads(line) for line in output.getvalue().splitlines()]
+            failed = next(e for e in events if e["event"] == "app-service-request" and e["outcome"] == "failed")
+            self.assertEqual((failed["phase"], failed["endpoint"], failed["category"]),
+                             ("capture-baseline", "app-runtime", "network"))
+            self.assertEqual(opened.call_count, 2)
+            self.assertFalse((folder / "evidence").exists())
+            self.assertNotIn("PRIVATE_RUNTIME_DETAIL", output.getvalue())
+
+    def test_phase_rejects_untrusted_labels_without_echoing_them(self):
+        output = io.StringIO()
+        with redirect_stderr(output), self.assertRaisesRegex(deploy.ReleaseError, "Unknown capture phase"):
+            with deploy.capture_phase("PRIVATE_PHASE_DETAIL"):
+                self.fail("Untrusted phase was accepted")
+        self.assertEqual(output.getvalue(), "")
+
     def test_remote_shell_command_preserves_inner_variables_and_quotes(self):
         with patch.object(deploy, "request", return_value=(200, json.dumps(
                 {"ExitCode": 0, "Output": "ok"}).encode(), {})) as mocked:
@@ -148,14 +320,15 @@ class DeployBankingTests(unittest.TestCase):
             previous_runtime = {"build": "2026.10.14.1"}
             previous_deployment = {"id": "before", "status": 4, "complete": True}
             backup_digest = "c" * 64
-            command_results = [f"{backup_digest}  /home/Banking/releases/before-{sha}.zip\n100\n"]
+            command_results = ["/home\n", f"{backup_digest}  /home/Banking/releases/before-{sha}.zip\n100\n"]
             command_results.extend(["d" * 64 + "  -\n"] * 4)
             with patch.object(deploy, "verify_azure_context"), \
                  patch.object(deploy, "read_hosted_baseline", return_value=({}, previous_runtime, previous_deployment)), \
                  patch.object(deploy, "access_token", return_value="token"), \
                  patch.object(deploy, "remote_command", side_effect=command_results) as remote:
                 snapshot = deploy.capture(capture_args)
-            capture_command = remote.call_args_list[0].args[1]
+            self.assertEqual(remote.call_args_list[0].args[1], "pwd")
+            capture_command = remote.call_args_list[1].args[1]
             self.assertIn("if test -e " + snapshot["rollbackLocation"], capture_command)
             self.assertIn("diff -qr /home/site/wwwroot", capture_command)
             self.assertTrue(any('wwwroot/index.html' in call.args[1] for call in remote.call_args_list))
