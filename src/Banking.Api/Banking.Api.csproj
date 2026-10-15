@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Banking.Tests" />
     <None Update="ThirdPartyNotices.txt" CopyToPublishDirectory="PreserveNewest" />
     <Content Update="appsettings.Local.json" CopyToPublishDirectory="Never" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
