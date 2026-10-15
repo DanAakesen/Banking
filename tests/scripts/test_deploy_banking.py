@@ -3,7 +3,6 @@ import http.client
 import importlib.util
 import io
 import json
-import shlex
 import socket
 import ssl
 import traceback
@@ -259,7 +258,7 @@ class DeployBankingTests(unittest.TestCase):
                 self.assertEqual([e["phase"] for e in failed], [phase, phase])
                 self.assertEqual(failed[0]["category"], "timeout")
                 probe = json.loads(opened.call_args_list[0].args[0].data)
-                self.assertEqual(shlex.split(probe["command"]), ["bash", "-c", "pwd"])
+                self.assertEqual(probe["command"], "bash -c pwd")
                 self.assertEqual(probe["dir"], "/home")
                 self.assertEqual(opened.call_count, 1 if phase == "capture-scm-probe" else 2)
                 self.assertFalse((folder / "evidence/rollback-manifest.json").exists())
@@ -293,13 +292,13 @@ class DeployBankingTests(unittest.TestCase):
                 self.fail("Untrusted phase was accepted")
         self.assertEqual(output.getvalue(), "")
 
-    def test_remote_shell_command_preserves_inner_variables_and_quotes(self):
-        with patch.object(deploy, "request", return_value=(200, json.dumps(
-                {"ExitCode": 0, "Output": "ok"}).encode(), {})) as mocked:
-            self.assertEqual(deploy.remote_command("token", 'printf "%s\\n" "$checkdir"'), "ok")
-        payload = json.loads(mocked.call_args.args[3])
-        self.assertEqual(shlex.split(payload["command"]),
-                         ["bash", "-c", 'printf "%s\\n" "$checkdir"'])
+    def test_remote_command_failure_suppresses_output_and_error(self):
+        output = io.StringIO()
+        with redirect_stderr(output), patch.object(deploy, "request", return_value=(200, json.dumps(
+                {"ExitCode": 2, "Output": "PRIVATE_REMOTE_OUTPUT", "Error": "PRIVATE_REMOTE_ERROR"}).encode(), {})):
+            with self.assertRaisesRegex(deploy.ReleaseError, "SCM command failed") as caught:
+                deploy.remote_command("token", 'printf "%s\\n" "$checkdir"')
+        self.assertNotIn("PRIVATE_REMOTE", output.getvalue() + str(caught.exception))
 
     def test_redirects_are_not_followed_and_hosts_are_fixed(self):
         redirect = urllib.error.HTTPError("url", 302, "redirect", {"Location": "https://attacker.invalid/"}, None)

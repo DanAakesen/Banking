@@ -8,7 +8,6 @@ import hashlib
 import http.client
 import json
 import re
-import shlex
 import socket
 import ssl
 import subprocess
@@ -261,7 +260,10 @@ def app_json(path: str) -> tuple[dict[str, Any], Any]:
 
 
 def remote_command(token: str, command: str) -> str:
-    payload = json.dumps({"command": "bash -c " + shlex.quote(command), "dir": "/home"}).encode()
+    # Kudu parses ProcessStartInfo.Arguments with .NET/CRT double-quote rules,
+    # then starter.sh execs argv directly. POSIX shlex.quote loses compound commands.
+    # list2cmdline preserves the entire script as one argument, without outer-shell expansion.
+    payload = json.dumps({"command": "bash -c " + subprocess.list2cmdline([command]), "dir": "/home"}).encode()
     status, data, _ = request(
         "POST", SCM_URL + "/api/command", token, payload,
         "application/json", timeout=180, max_bytes=4 * 1024 * 1024,

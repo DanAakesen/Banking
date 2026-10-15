@@ -61,6 +61,13 @@ async function run(browser,{width,theme,lang='en',live=true}){
  const approve=async()=>{await page.locator('#pension-confirm').check();await page.locator('#pension-warnings-confirm').check();await page.locator('#pension-review-form [type=submit]').click();};
  try{
   await page.goto(origin+'/#/pension');await ready();await inspect('empty');
+  const pensionLink=page.locator('.sidebar a[href="#/pension"]');
+  assert.equal(await pensionLink.locator('small').count(),0);assert.equal((await pensionLink.innerText()).trim(),'Pension');
+  assert.equal(await pensionLink.getAttribute('aria-current'),'page');
+  assert.equal(await page.locator('.sidebar a[href="#/review"] .nav-count').count(),1);
+  assert.equal(await page.locator('.sidebar a[href="#/investments"]').count(),1);
+  if(width<=900){await page.locator('[data-action=more]').click();const mobile=page.locator('#overlay a[href="#/pension"]');assert.equal((await mobile.innerText()).trim(),'Pension');assert.equal(await mobile.locator('small').count(),0);await inspect('pension-navigation-more');await page.locator('#overlay [data-action=close]').click();}
+  if(process.env.PENSION_NAV_ONLY){assert.equal(receipts.length,0);assert.equal(writes.length,0);await page.goto(origin+'/#/accounts');await ready();await inspect('accounts-reference');console.log(`PASS pension navigation ${width}px ${theme} ${lang} ${live?'owner':'demo'}`);return;}
   if(!live){assert.equal(await page.locator('#pension-file').count(),0);assert.equal(await page.locator('[data-sample]').count(),0);assert.equal(await page.locator('#pension-demo-held').count(),1);assert.equal(receipts.length,0);await page.goto(origin+'/#/accounts');await ready();await inspect('accounts-reference');console.log('PASS Demo import held; no data created');return;}
   assert.equal(await page.locator('#pension-file').count(),live?1:0);await upload('later');assert.equal(writes.length,0);assert.equal(records.length,0);
   await page.locator('.pension-projections summary').click();await page.locator('#pension-scenario').selectOption('10');assert.match(await page.locator('#pension-payouts').innerText(),/ATP/);
