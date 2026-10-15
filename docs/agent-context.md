@@ -1,3 +1,7 @@
+## Demo repair and annotation compatibility — 15 October 2026
+
+See [repair and verification](demo-repair-2026-10-15.md). The authorized synthetic shared Demo repair is applied through deployed normal APIs and repeat application is a no-op; manual classifications and financial definitions are preserved. Exact current Codex overlay/cursor CSP hashes and the synthetic bill-counterparty source correction are prepared and require deployment. Do not duplicate the repair or redeploy without authorization. Actual embedded-browser annotation acceptance remains separate from source-derived Chromium checks.
+
 ## Presentation readiness — 12 October 2026
 
 Dan presents Demo on **22 October 2026**. Use [presentation readiness](presentation-readiness.md) for the core journey checklist, current Demo/Dan/deployed status, advisor data-access audit, pension upload scope, performance measurements and acceptance gaps. PFA automatic/API integration is parked; reuse the existing PensionsInfo JSON/manual statement workflow. No real PFA file/format is available and no PDF parsing is claimed. Banking Main coordinates the fresh published Banking cloud task; Jarvis is a separate project/environment. Implementation and validated merging are authorized; production deployment remains separate.

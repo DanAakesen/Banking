@@ -13,6 +13,23 @@ namespace FrontendHost.Tests;
 
 public sealed class TransportTests : IAsyncLifetime
 {
+    [Fact]
+    public async Task Main_assets_allow_only_exact_old_and_current_annotation_styles()
+    {
+        using var response = await client.GetAsync("/");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var policy = response.Headers.GetValues("Content-Security-Policy").Single();
+        foreach (var hash in new[] {
+            "UjmwW5hqkbmZat2z0a4MIudqMdHHunQ57o+t2nldQPQ=",
+            "WO55anZ1V8A0G22bY2t72RV4dI79SLI4VnYLgsEeWUc=",
+            "OUoShR0c3lqWNHEaHdorwfYnp/0EJHI/7QhTEUtan9w=",
+            "6ddE/BE/E7OfXOyznfBSKxo7Dfm3OMuxy0O5a2y6TqI=" })
+            Assert.Contains("'sha256-" + hash + "'", policy);
+        Assert.Contains("script-src 'self';", policy);
+        Assert.Contains("frame-ancestors 'none';", policy);
+        Assert.DoesNotContain("unsafe-", policy);
+    }
+
     private const int Port = 5444;
     private const string Origin = "https://localhost:5444";
     private readonly CaptureHandler upstream = new();
