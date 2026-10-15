@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import re
-import shlex
+import socket
+import ssl
 import subprocess
 import sys
 import time
@@ -15,6 +17,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -33,6 +37,11 @@ SCM_URL = f"https://{APP}.scm.azurewebsites.net"
 MAX_SITE_ZIP = 512 * 1024 * 1024
 POLL_SECONDS = 5
 DEPLOY_TIMEOUT_SECONDS = 900
+CAPTURE_PHASES = frozenset({
+    "capture-artifact", "capture-azure-context", "capture-baseline", "capture-token",
+    "capture-scm-probe", "capture-backup", "capture-assets", "capture-evidence",
+})
+CURRENT_PHASE = ContextVar("release_phase", default="release")
 
 
 class ReleaseError(RuntimeError):
@@ -41,6 +50,55 @@ class ReleaseError(RuntimeError):
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def diagnostic(event: str, **fields: Any) -> None:
+    # Callers supply fixed labels and numeric timing/status only, never remote text.
+    print(json.dumps({"event": event, "phase": CURRENT_PHASE.get(), "at": utc_now(),
+                      **fields}, sort_keys=True), file=sys.stderr, flush=True)
+
+
+@contextmanager
+def capture_phase(label: str):
+    if label not in CAPTURE_PHASES:
+        raise ReleaseError("Unknown capture phase.")
+    previous = CURRENT_PHASE.set(label)
+    started = time.monotonic()
+    diagnostic("release-phase", outcome="started")
+    try:
+        yield
+    except Exception:
+        diagnostic("release-phase", outcome="failed",
+                   elapsedMs=round((time.monotonic() - started) * 1000))
+        raise
+    else:
+        diagnostic("release-phase", outcome="succeeded",
+                   elapsedMs=round((time.monotonic() - started) * 1000))
+    finally:
+        CURRENT_PHASE.reset(previous)
+
+
+def endpoint_label(parsed: urllib.parse.ParseResult) -> str:
+    # No raw URL, query, path, headers or command may enter diagnostic evidence.
+    if parsed.netloc == f"{APP}.scm.azurewebsites.net":
+        return {"/api/command": "scm-command", "/api/deployments/latest": "scm-latest-deployment",
+                "/api/zipdeploy": "scm-zipdeploy"}.get(parsed.path, "scm-other")
+    return {"/health": "app-health", "/api/runtime-info": "app-runtime"}.get(parsed.path, "app-other")
+
+
+def network_category(error: BaseException) -> str:
+    reason = error.reason if isinstance(error, urllib.error.URLError) else error
+    if isinstance(reason, TimeoutError):
+        return "timeout"
+    if isinstance(reason, ssl.SSLError):
+        return "tls"
+    if isinstance(reason, socket.gaierror):
+        return "dns"
+    if isinstance(reason, ConnectionError):
+        return "connection"
+    if isinstance(reason, http.client.HTTPException):
+        return "protocol"
+    return "network"
 
 
 def sha256_file(path: Path) -> str:
@@ -127,6 +185,16 @@ def request(
     if content_type:
         headers["Content-Type"] = content_type
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    endpoint = endpoint_label(parsed)
+    started = time.monotonic()
+    diagnostic("app-service-request", endpoint=endpoint, outcome="started", timeoutSeconds=timeout)
+
+    def finish(outcome: str, category: str, status: int | None = None) -> None:
+        safe_status = status if type(status) is int and 100 <= status <= 599 else None
+        diagnostic("app-service-request", endpoint=endpoint, outcome=outcome, category=category,
+                   httpStatus=safe_status, elapsedMs=round((time.monotonic() - started) * 1000),
+                   timeoutSeconds=timeout)
+
     try:
         with urllib.request.build_opener(_NoRedirect()).open(req, timeout=timeout) as response:
             content_length = response.headers.get("Content-Length")
@@ -135,16 +203,29 @@ def request(
             data = response.read(max_bytes + 1)
             if len(data) > max_bytes:
                 raise ReleaseError("App Service response exceeded the configured size bound.")
+            finish("succeeded", "http", response.status)
             return response.status, data, response.headers
     except urllib.error.HTTPError as exc:
         # Do not emit response bodies: Kudu deployment logs can contain application detail.
+        status = exc.code if type(exc.code) is int and 100 <= exc.code <= 599 else None
         if allow_http_error:
+            finish("allowed", "http", status)
             return exc.code, b"", exc.headers
-        if 300 <= exc.code < 400:
-            raise ReleaseError("App Service redirect was refused.") from exc
-        raise ReleaseError(f"App Service request failed with HTTP {exc.code}.") from exc
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise ReleaseError("App Service request failed; response details were suppressed.") from exc
+        if status is not None and 300 <= status < 400:
+            finish("failed", "redirect-refused", status)
+            raise ReleaseError(f"App Service redirect was refused ({endpoint}).") from None
+        finish("failed", "http", status)
+        raise ReleaseError(f"App Service request failed with HTTP {status or 'unknown'} ({endpoint}).") from None
+    except (urllib.error.URLError, OSError, http.client.HTTPException) as exc:
+        category = network_category(exc)
+        finish("failed", category)
+        raise ReleaseError(f"App Service request failed ({endpoint}; {category}); details suppressed.") from None
+    except ValueError:
+        finish("failed", "invalid-response")
+        raise ReleaseError(f"App Service response was invalid ({endpoint}); details suppressed.") from None
+    except ReleaseError:
+        finish("failed", "response-bound")
+        raise
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -179,7 +260,10 @@ def app_json(path: str) -> tuple[dict[str, Any], Any]:
 
 
 def remote_command(token: str, command: str) -> str:
-    payload = json.dumps({"command": "bash -c " + shlex.quote(command), "dir": "/home"}).encode()
+    # Kudu parses ProcessStartInfo.Arguments with .NET/CRT double-quote rules,
+    # then starter.sh execs argv directly. POSIX shlex.quote loses compound commands.
+    # list2cmdline preserves the entire script as one argument, without outer-shell expansion.
+    payload = json.dumps({"command": "bash -c " + subprocess.list2cmdline([command]), "dir": "/home"}).encode()
     status, data, _ = request(
         "POST", SCM_URL + "/api/command", token, payload,
         "application/json", timeout=180, max_bytes=4 * 1024 * 1024,
@@ -299,12 +383,19 @@ def read_hosted_baseline() -> tuple[dict[str, Any], dict[str, Any], dict[str, An
 
 
 def capture(args: argparse.Namespace) -> dict[str, Any]:
-    manifest = verify_manifest(Path(args.package), Path(args.manifest), args.source_sha)
-    verify_azure_context()
-    _, runtime, deployment = read_hosted_baseline()
-    token = access_token()
+    with capture_phase("capture-artifact"):
+        manifest = verify_manifest(Path(args.package), Path(args.manifest), args.source_sha)
+    with capture_phase("capture-azure-context"):
+        verify_azure_context()
+    with capture_phase("capture-baseline"):
+        _, runtime, deployment = read_hosted_baseline()
+    with capture_phase("capture-token"):
+        token = access_token()
     evidence_dir = Path(args.evidence_dir)
     evidence_dir.mkdir(parents=True, exist_ok=False)
+    with capture_phase("capture-scm-probe"):
+        if remote_command(token, "pwd").strip() != "/home":
+            raise ReleaseError("SCM read-only probe did not confirm its fixed working directory.")
     remote_path = f"/home/Banking/releases/before-{args.source_sha}.zip"
     command = (
         "set -e; mkdir -p /home/Banking/releases; "
@@ -323,21 +414,23 @@ def capture(args: argparse.Namespace) -> dict[str, Any]:
         f"zip -T {remote_path} >/dev/null; "
         f"sha256sum {remote_path}; stat -c %s {remote_path}"
     )
-    output = remote_command(token, command)
-    hashes = re.findall(r"\b([0-9a-f]{64})\s+", output)
-    sizes = re.findall(r"(?:^|\n)(\d+)(?:\n|$)", output)
-    if not hashes or not sizes:
-        raise ReleaseError("SCM did not return rollback checksum and size evidence.")
-    rollback_hash = hashes[0]
-    rollback_size = int(sizes[0])
-    if rollback_size <= 0 or rollback_size > MAX_SITE_ZIP:
-        raise ReleaseError("Remote rollback archive is empty or exceeds the size bound.")
+    with capture_phase("capture-backup"):
+        output = remote_command(token, command)
+        hashes = re.findall(r"\b([0-9a-f]{64})\s+", output)
+        sizes = re.findall(r"(?:^|\n)(\d+)(?:\n|$)", output)
+        if not hashes or not sizes:
+            raise ReleaseError("SCM did not return rollback checksum and size evidence.")
+        rollback_hash = hashes[0]
+        rollback_size = int(sizes[0])
+        if rollback_size <= 0 or rollback_size > MAX_SITE_ZIP:
+            raise ReleaseError("Remote rollback archive is empty or exceeds the size bound.")
     asset_hashes: dict[str, str] = {}
-    for asset in ("index.html", "app.js", "styles.css", "saxo-session.js"):
-        output = remote_command(token, f"set -eo pipefail; unzip -p {remote_path} wwwroot/{asset} | sha256sum")
-        match = re.search(r"\b([0-9a-f]{64})\s+", output)
-        if match:
-            asset_hashes[asset] = match.group(1)
+    with capture_phase("capture-assets"):
+        for asset in ("index.html", "app.js", "styles.css", "saxo-session.js"):
+            output = remote_command(token, f"set -eo pipefail; unzip -p {remote_path} wwwroot/{asset} | sha256sum")
+            match = re.search(r"\b([0-9a-f]{64})\s+", output)
+            if match:
+                asset_hashes[asset] = match.group(1)
     snapshot = {
         "schemaVersion": 1,
         "app": APP,
@@ -354,9 +447,10 @@ def capture(args: argparse.Namespace) -> dict[str, Any]:
         "rollbackAssets": asset_hashes,
         "capturedAt": utc_now(),
     }
-    (evidence_dir / "rollback-manifest.json").write_text(
-        json.dumps(snapshot, indent=2) + "\n", encoding="utf-8"
-    )
+    with capture_phase("capture-evidence"):
+        (evidence_dir / "rollback-manifest.json").write_text(
+            json.dumps(snapshot, indent=2) + "\n", encoding="utf-8"
+        )
     print(json.dumps({key: snapshot[key] for key in (
         "app", "sourceSha", "previousBuild", "previousDeploymentId",
         "rollbackLocation", "rollbackSha256", "rollbackSize", "capturedAt",
