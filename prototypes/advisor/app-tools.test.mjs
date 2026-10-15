@@ -9,6 +9,12 @@ import {fileURLToPath} from 'node:url';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 const id=randomUUID();
+test('raw pension reports, receipts and private originals are outside advisor tool resources',async()=>{
+ let calls=0;const request=async()=>{calls++;return {};};
+ for(const resource of ['pension_uploads','pension_snapshots','pension_original','/api/pension/uploads'])
+  await assert.rejects(readAppData('synthetic-session','Live',{resource,parameters:{}},{},request),/Unsupported data resource/);
+ assert.equal(calls,0);
+});
 test('app tools load frontend assets from an isolated deployed asset root',async()=>{
  const releaseRoot=await mkdtemp(path.join(tmpdir(),'banking-deployed-assets-'));
  const packageRoot=path.join(releaseRoot,'prototypes','advisor'),assetRoot=path.join(releaseRoot,'assets','wwwroot');
@@ -16,7 +22,7 @@ test('app tools load frontend assets from an isolated deployed asset root',async
  try{
   await Promise.all([mkdir(packageRoot,{recursive:true}),mkdir(assetRoot,{recursive:true})]);
   await Promise.all(['app-tools.mjs','saxo-tools.mjs','banking-context.mjs'].map(name=>copyFile(path.join(sourceRoot,name),path.join(packageRoot,name))));
-  await Promise.all(['overview.js','budget-ui.js','wealth-ui.js','saxo-session.js'].map(name=>copyFile(path.join(sourceRoot,'../../src/Banking.Api/wwwroot',name),path.join(assetRoot,name))));
+  await Promise.all(['overview.js','budget-ui.js','wealth-ui.js','pension-import-ui.js','saxo-session.js'].map(name=>copyFile(path.join(sourceRoot,'../../src/Banking.Api/wwwroot',name),path.join(assetRoot,name))));
   await writeFile(path.join(releaseRoot,'package.json'),'{"type":"module"}');
   const script=[
    "import assert from 'node:assert/strict';",

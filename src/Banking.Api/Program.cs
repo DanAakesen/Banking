@@ -12,6 +12,11 @@ using Microsoft.EntityFrameworkCore;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 
+if (args.Length == 1 && args[0] == "--pension-pdf-worker")
+{ Environment.ExitCode = await PensionPdfReader.Run(); return; }
+if (args.Length == 1 && args[0] == "--verify-pension-schema")
+{ Environment.ExitCode = await PensionSchemaGate.Run(new ConfigurationBuilder().AddEnvironmentVariables().Build()); return; }
+
 var builder = WebApplication.CreateBuilder(args);
 if (builder.Environment.IsDevelopment())
 {
@@ -84,6 +89,8 @@ builder.Services.AddScoped<FinanceService>();
 builder.Services.AddScoped<GoalService>();
 builder.Services.AddScoped<LoanService>();
 builder.Services.AddScoped<WealthService>();
+builder.Services.AddSingleton<IPensionPdfReader, PensionPdfReader>();
+builder.Services.AddScoped<PensionImportService>();
 builder.Services.AddScoped<ResearchService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<IMarketDataProvider, SaxoMarketDataProvider>(c => c.Timeout = TimeSpan.FromSeconds(20)).AddHttpMessageHandler<SaxoBudgetHandler>()

@@ -14,6 +14,32 @@ namespace FrontendHost.Tests;
 public sealed class TransportTests : IAsyncLifetime
 {
     [Fact]
+    public async Task PensionModuleAndLargePdfUploadAndPrivateDownloadUseSharedApiBoundary()
+    {
+        using var module = await client.GetAsync("/pension-import-ui.js");
+        Assert.Equal(HttpStatusCode.OK, module.StatusCode);
+        Assert.Contains("mountPensionImports", await module.Content.ReadAsStringAsync());
+        var pdf = "%PDF-" + new string('A', 100000);
+        upstream.Responder = request => {
+            if(request.Uri.AbsolutePath.EndsWith("/original",StringComparison.Ordinal)) {
+                var response=new HttpResponseMessage(HttpStatusCode.OK) {Content=new StringContent(pdf,Encoding.ASCII,"application/pdf")};
+                response.Headers.CacheControl=new CacheControlHeaderValue {NoStore=true,Private=true};
+                response.Content.Headers.ContentDisposition=new ContentDispositionHeaderValue("attachment") {FileName="PensionsInfo-report.pdf"};
+                response.Headers.Add("X-Banking-Mode","Live");return response;
+            }
+            Assert.Equal(pdf,request.Body);Assert.Equal("Live",request.GetValues("X-Banking-Mode").Single());
+            return new HttpResponseMessage(HttpStatusCode.OK) {Content=new StringContent("{}",Encoding.UTF8,"application/json")};
+        };
+        using var upload=new HttpRequestMessage(HttpMethod.Post,"/api/pension/uploads") {Content=new StringContent(pdf,Encoding.ASCII,"application/pdf")};
+        upload.Headers.Add("X-Banking-Client","web");upload.Headers.Add("X-Banking-Mode","Live");upload.Headers.Add("Origin",Origin);
+        using var accepted=await client.SendAsync(upload);Assert.Equal(HttpStatusCode.OK,accepted.StatusCode);
+        using var original=await client.GetAsync("/api/pension/uploads/00000000-0000-0000-0000-000000000001/original");
+        Assert.Equal("application/pdf",original.Content.Headers.ContentType!.MediaType);
+        Assert.Equal("attachment",original.Content.Headers.ContentDisposition!.DispositionType);
+        Assert.True(original.Headers.CacheControl!.NoStore);Assert.True(original.Headers.CacheControl.Private);
+        Assert.Equal(pdf,await original.Content.ReadAsStringAsync());
+    }
+    [Fact]
     public async Task Main_assets_allow_only_exact_old_and_current_annotation_styles()
     {
         using var response = await client.GetAsync("/");

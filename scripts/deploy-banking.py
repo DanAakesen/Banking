@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -178,7 +179,7 @@ def app_json(path: str) -> tuple[dict[str, Any], Any]:
 
 
 def remote_command(token: str, command: str) -> str:
-    payload = json.dumps({"command": "bash -c \"" + command + "\"", "dir": "/home"}).encode()
+    payload = json.dumps({"command": "bash -c " + shlex.quote(command), "dir": "/home"}).encode()
     status, data, _ = request(
         "POST", SCM_URL + "/api/command", token, payload,
         "application/json", timeout=180, max_bytes=4 * 1024 * 1024,
@@ -307,8 +308,19 @@ def capture(args: argparse.Namespace) -> dict[str, Any]:
     remote_path = f"/home/Banking/releases/before-{args.source_sha}.zip"
     command = (
         "set -e; mkdir -p /home/Banking/releases; "
-        f"test ! -e {remote_path}; cd /home/site/wwwroot; "
-        f"zip -qr {remote_path} .; zip -T {remote_path} >/dev/null; "
+        "cd /home/site/wwwroot; "
+        f"if test -e {remote_path}; then "
+        f"test -f {remote_path}; test ! -L {remote_path}; "
+        "checkdir=$(mktemp -d /home/Banking/releases/backup-check-XXXXXX); "
+        "trap 'rm -rf -- \"$checkdir\"' EXIT; "
+        f"unzip -oq {remote_path} -d \"$checkdir\"; "
+        "diff -qr /home/site/wwwroot \"$checkdir\" >/dev/null; "
+        "rm -rf -- \"$checkdir\"; "
+        "trap - EXIT; "
+        "else "
+        f"zip -qr {remote_path} .; "
+        "fi; "
+        f"zip -T {remote_path} >/dev/null; "
         f"sha256sum {remote_path}; stat -c %s {remote_path}"
     )
     output = remote_command(token, command)
@@ -506,6 +518,45 @@ def post_zip(token: str, archive: Path) -> None:
         raise ReleaseError(f"SCM upload returned HTTP {status}.")
 
 
+def stage_and_verify_pension_schema(token: str, package: Path, source_sha: str,
+                                    expected_sha256: str) -> dict[str, Any]:
+    """Stage the immutable ZIP away from wwwroot, then run the app's read-only schema gate."""
+    require_sha(source_sha)
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
+        raise ReleaseError("Release archive checksum is invalid for the schema preflight.")
+    remote_root = "/home/Banking/releases"
+    remote_zip = f"{remote_root}/{source_sha}.zip"
+    remote_stage = f"{remote_root}/{source_sha}"
+    decision_output = remote_command(
+        token,
+        "set -e; mkdir -p /home/Banking/releases; "
+        f"if test -L {remote_zip}; then exit 17; "
+        f"elif test -f {remote_zip}; then "
+        f"printf '%s  %s\\n' {expected_sha256} {remote_zip} | sha256sum -c -; "
+        "printf 'REUSE\\n'; "
+        f"elif test -e {remote_zip}; then exit 18; else printf 'UPLOAD\\n'; fi",
+    )
+    decision = decision_output.strip().splitlines()[-1:]
+    if decision == ["UPLOAD"]:
+        status, _, _ = request(
+            "PUT", f"{SCM_URL}/api/vfs/Banking/releases/{source_sha}.zip", token,
+            body=package.read_bytes(), content_type="application/zip", timeout=180,
+        )
+        if status not in (200, 201, 202):
+            raise ReleaseError(f"SCM staging upload returned HTTP {status}.")
+    elif decision != ["REUSE"]:
+        raise ReleaseError("SCM did not confirm a safe schema-preflight archive reuse or upload.")
+    command = (
+        "set -e; "
+        f"printf '%s  %s\\n' {expected_sha256} {remote_zip} | sha256sum -c -; "
+        f"rm -rf -- {remote_stage}; mkdir {remote_stage}; "
+        f"unzip -oq {remote_zip} -d {remote_stage}; "
+        f"cd {remote_stage}; dotnet Banking.Api.dll --verify-pension-schema"
+    )
+    remote_command(token, command)
+    return {"verified": True, "archiveSha256": expected_sha256, "stagedPath": remote_stage}
+
+
 def verify_snapshot(snapshot_path: Path, source_sha: str,
                     manifest: dict[str, Any], artifact_digest: str) -> dict[str, Any]:
     try:
@@ -552,6 +603,7 @@ def publish(args: argparse.Namespace) -> dict[str, Any]:
         "previousDeploymentId": snapshot["previousDeploymentId"],
         "rollbackSha256": snapshot["rollbackSha256"],
         "controlledRestartIssued": False,
+        "pensionSchemaVerified": False,
         "startedAt": utc_now(),
     }
     token = access_token()
@@ -564,6 +616,10 @@ def publish(args: argparse.Namespace) -> dict[str, Any]:
     attempted = False
     new_deployment: dict[str, Any] | None = None
     try:
+        result["pensionSchemaGate"] = stage_and_verify_pension_schema(
+            token, package, source_sha, manifest["archive"]["sha256"]
+        )
+        result["pensionSchemaVerified"] = True
         attempted = True
         post_zip(token, package)
         new_deployment = wait_after_publish(token, snapshot["previousDeploymentId"])
@@ -576,7 +632,7 @@ def publish(args: argparse.Namespace) -> dict[str, Any]:
             raise ReleaseError("App Service reported that the new deployment failed.")
         result["runtimeFilesVerified"] = verify_runtime_files(token, manifest)
         run_az(
-            "webapp", "restart", "--subscription", SUBSCRIPTION, "--resource-group", RESOURCE_GROUP,
+            "webapp", "restart", "--resource-group", RESOURCE_GROUP,
             "--name", APP, "--output", "none",
         )
         result["controlledRestartIssued"] = True

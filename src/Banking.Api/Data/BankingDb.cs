@@ -11,6 +11,9 @@ public sealed class BankingDb(DbContextOptions<BankingDb> options, Workspace? wo
     {
         foreach (var entry in ChangeTracker.Entries<Entity>())
         {
+            if (entry.Entity is Banking.Api.Services.PensionDocument or Banking.Api.Services.PensionSnapshot
+                && entry.State is EntityState.Modified or EntityState.Deleted)
+                throw new InvalidOperationException("Pension originals and accepted snapshots are immutable.");
             if (entry.State == EntityState.Added) entry.Entity.DemoScope = CurrentDemoScope;
             else if (entry.State is EntityState.Modified or EntityState.Deleted && entry.Entity.DemoScope != CurrentDemoScope)
                 throw new InvalidOperationException("Cross-session writes are forbidden.");
@@ -30,6 +33,9 @@ public sealed class BankingDb(DbContextOptions<BankingDb> options, Workspace? wo
     public DbSet<Goal> Goals => Set<Goal>();
     public DbSet<Banking.Api.Services.LoanRecord> Loans => Set<Banking.Api.Services.LoanRecord>();
     public DbSet<Banking.Api.Services.WealthRecord> WealthRecords => Set<Banking.Api.Services.WealthRecord>();
+    public DbSet<Banking.Api.Services.PensionDocument> PensionDocuments => Set<Banking.Api.Services.PensionDocument>();
+    public DbSet<Banking.Api.Services.PensionUpload> PensionUploads => Set<Banking.Api.Services.PensionUpload>();
+    public DbSet<Banking.Api.Services.PensionSnapshot> PensionSnapshots => Set<Banking.Api.Services.PensionSnapshot>();
     public DbSet<Banking.Api.Services.ResearchItem> ResearchItems => Set<Banking.Api.Services.ResearchItem>();
     public DbSet<ReviewAction> ReviewActions => Set<ReviewAction>();
     public DbSet<ClassificationChange> ClassificationChanges => Set<ClassificationChange>();
@@ -59,6 +65,19 @@ public sealed class BankingDb(DbContextOptions<BankingDb> options, Workspace? wo
         model.Entity<Banking.Api.Services.WealthRecord>().Property(x => x.Name).HasMaxLength(120);
         model.Entity<Banking.Api.Services.WealthRecord>().Property(x => x.Provider).HasMaxLength(120);
         model.Entity<Banking.Api.Services.WealthRecord>().Property(x => x.Kind).HasMaxLength(16);
+        model.Entity<Banking.Api.Services.WealthRecord>().Property(x => x.PensionSourceKey).HasMaxLength(64);
+        model.Entity<Banking.Api.Services.WealthRecord>().HasIndex(x => new { x.DemoScope, x.PensionSourceKey }).IsUnique().HasFilter("[PensionSourceKey] IS NOT NULL");
+        model.Entity<Banking.Api.Services.PensionDocument>().Property(x => x.Hash).HasMaxLength(64);
+        model.Entity<Banking.Api.Services.PensionDocument>().HasIndex(x => new { x.DemoScope, x.Hash }).IsUnique();
+        model.Entity<Banking.Api.Services.PensionDocument>().Property(x => x.ProtectedOriginal).HasColumnType("varbinary(max)");
+        model.Entity<Banking.Api.Services.PensionUpload>().Property(x => x.PreviewJson).HasColumnType("nvarchar(max)").Metadata.SetMaxLength(null);
+        model.Entity<Banking.Api.Services.PensionUpload>().HasOne<Banking.Api.Services.PensionDocument>().WithMany().HasForeignKey(x => x.DocumentId);
+        model.Entity<Banking.Api.Services.PensionSnapshot>().Property(x => x.DataJson).HasColumnType("nvarchar(max)").Metadata.SetMaxLength(null);
+        model.Entity<Banking.Api.Services.PensionSnapshot>().Property(x => x.ReviewHash).HasMaxLength(64);
+        model.Entity<Banking.Api.Services.PensionSnapshot>().Property(x => x.CoverageKey).HasMaxLength(64);
+        model.Entity<Banking.Api.Services.PensionSnapshot>().HasIndex(x => new { x.DemoScope, x.DocumentId, x.ReviewHash }).IsUnique();
+        model.Entity<Banking.Api.Services.PensionSnapshot>().HasOne<Banking.Api.Services.PensionUpload>().WithMany().HasForeignKey(x => x.UploadId);
+        model.Entity<Banking.Api.Services.PensionSnapshot>().HasIndex(x => new { x.DemoScope, x.AsOf });
         model.Entity<Banking.Api.Services.WealthRecord>().HasIndex(x => new { x.DemoScope, x.Kind, x.Provider, x.Name }).IsUnique();
         model.Entity<Account>().Property(x => x.CustomName).HasMaxLength(200);
         model.Entity<Account>().Property(x => x.BankDetailsJson).HasMaxLength(12000);
