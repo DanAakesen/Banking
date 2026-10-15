@@ -551,6 +551,7 @@ def publish(args: argparse.Namespace) -> dict[str, Any]:
         "previousBuild": snapshot["previousBuild"],
         "previousDeploymentId": snapshot["previousDeploymentId"],
         "rollbackSha256": snapshot["rollbackSha256"],
+        "controlledRestartIssued": False,
         "startedAt": utc_now(),
     }
     token = access_token()
@@ -574,6 +575,11 @@ def publish(args: argparse.Namespace) -> dict[str, Any]:
         if not is_success(new_deployment):
             raise ReleaseError("App Service reported that the new deployment failed.")
         result["runtimeFilesVerified"] = verify_runtime_files(token, manifest)
+        run_az(
+            "webapp", "restart", "--subscription", SUBSCRIPTION, "--resource-group", RESOURCE_GROUP,
+            "--name", APP, "--output", "none",
+        )
+        result["controlledRestartIssued"] = True
         result["postDeploy"] = verify_hosted(
             package, manifest, manifest["build"], Path(args.repo), check_csp=True
         )
@@ -640,7 +646,7 @@ def restore_remote_backup(token: str, snapshot: dict[str, Any]) -> dict[str, Any
         f"cp -a {stage}/. /home/site/wwwroot/; test -s /home/site/wwwroot/Banking.Api.dll"
     )
     remote_command(token, command)
-    run_az("webapp", "restart", "--resource-group", RESOURCE_GROUP, "--name", APP, "--output", "none")
+    run_az("webapp", "restart", "--subscription", SUBSCRIPTION, "--resource-group", RESOURCE_GROUP, "--name", APP, "--output", "none")
     deadline = time.monotonic() + 180
     while time.monotonic() < deadline:
         try:
