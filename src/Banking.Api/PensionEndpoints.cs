@@ -10,7 +10,12 @@ public static class PensionEndpoints
 {
     public static void MapPensionApi(this WebApplication app)
     {
-        app.MapPost("/api/pension/uploads", async (HttpRequest request, Workspace workspace, PensionImportService service, CancellationToken ct) =>
+        var pension = app.MapGroup("/api/pension").AddEndpointFilter(async (context, next) => {
+            var workspace = context.HttpContext.RequestServices.GetRequiredService<Workspace>();
+            if (workspace.Mode != "Live" || !workspace.OwnerAuthenticated) throw new ApiFailure(403, "OWNER_REQUIRED_FOR_PENSION");
+            return await next(context);
+        });
+        pension.MapPost("/uploads", async (HttpRequest request, Workspace workspace, PensionImportService service, CancellationToken ct) =>
         {
             if (workspace.Mode != "Live" || !workspace.OwnerAuthenticated) throw new ApiFailure(403, "OWNER_REQUIRED_FOR_PRIVATE_UPLOAD");
             if (request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
@@ -21,17 +26,11 @@ public static class PensionEndpoints
             var bytes = await ReadBounded(request, type == "application/json" ? 60000 : PensionReportParser.MaxBytes, ct);
             try { return await service.Upload(bytes, type, false, ct); } finally { Array.Clear(bytes); }
         });
-        app.MapPost("/api/pension/uploads/demo", (PensionSample input, Workspace workspace, PensionImportService service, CancellationToken ct) =>
-        {
-            Check.That(workspace.Mode == "Demo", "DEMO_ONLY");
-            Check.That(input.Version is "earlier" or "later" or "correction", "INVALID_PENSION_SAMPLE");
-            return service.Upload(SyntheticPensionReport.Create(input.Version), "application/pdf", true, ct);
-        });
-        app.MapGet("/api/pension/uploads", (int? offset, PensionImportService service, CancellationToken ct) => service.History(offset ?? 0, ct));
-        app.MapGet("/api/pension/uploads/{id:guid}", (Guid id, PensionImportService service, CancellationToken ct) => service.Detail(id, ct));
-        app.MapPost("/api/pension/uploads/{id:guid}/parse", (Guid id, PensionRetry input, PensionImportService service, CancellationToken ct) => service.Parse(id, input.Version, ct));
-        app.MapPost("/api/pension/uploads/{id:guid}/link", (Guid id, PensionReuse input, PensionImportService service, CancellationToken ct) => service.Reuse(id, input, ct));
-        app.MapPost("/api/pension/uploads/{id:guid}/approve", async (Guid id, HttpRequest request, PensionImportService service, CancellationToken ct) => {
+        pension.MapGet("/uploads", (int? offset, PensionImportService service, CancellationToken ct) => service.History(offset ?? 0, ct));
+        pension.MapGet("/uploads/{id:guid}", (Guid id, PensionImportService service, CancellationToken ct) => service.Detail(id, ct));
+        pension.MapPost("/uploads/{id:guid}/parse", (Guid id, PensionRetry input, PensionImportService service, CancellationToken ct) => service.Parse(id, input.Version, ct));
+        pension.MapPost("/uploads/{id:guid}/link", (Guid id, PensionReuse input, PensionImportService service, CancellationToken ct) => service.Reuse(id, input, ct));
+        pension.MapPost("/uploads/{id:guid}/approve", async (Guid id, HttpRequest request, PensionImportService service, CancellationToken ct) => {
             const int reviewLimit = 768000;
             if (request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit) limit.MaxRequestBodySize = reviewLimit;
             Check.That(request.HasJsonContentType(), "PENSION_FILE_TYPE");
@@ -42,8 +41,8 @@ public static class PensionEndpoints
             finally { Array.Clear(bytes); }
             return await service.Approve(id, input, ct);
         });
-        app.MapGet("/api/pension/snapshots/{id:guid}", (Guid id, PensionImportService service, CancellationToken ct) => service.Snapshot(id, ct));
-        app.MapGet("/api/pension/uploads/{id:guid}/original", async (Guid id, PensionImportService service, HttpContext context, CancellationToken ct) =>
+        pension.MapGet("/snapshots/{id:guid}", (Guid id, PensionImportService service, CancellationToken ct) => service.Snapshot(id, ct));
+        pension.MapGet("/uploads/{id:guid}/original", async (Guid id, PensionImportService service, HttpContext context, CancellationToken ct) =>
         {
             var file = await service.Original(id, ct);
             context.Response.Headers.CacheControl = "no-store, private";
@@ -60,6 +59,5 @@ public static class PensionEndpoints
         { Check.That(output.Length + count <= max, "PENSION_FILE_TOO_LARGE"); await output.WriteAsync(buffer.AsMemory(0, count), ct); }
         return output.ToArray();
     }
-    public sealed record PensionSample(string Version);
     public sealed record PensionRetry(string Version);
 }

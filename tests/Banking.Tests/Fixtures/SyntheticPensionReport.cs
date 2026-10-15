@@ -6,7 +6,7 @@ using Banking.Api.Services;
 
 namespace Banking.Api.Providers;
 
-// Deliberately fictional, server-generated originals. Public Demo cannot retain a visitor's private file.
+// Isolated parser/security regression fixture only. This is not an accepted owner format or product Demo dataset.
 public static class SyntheticPensionReport
 {
     public static byte[] Create(string version)

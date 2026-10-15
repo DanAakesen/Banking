@@ -96,7 +96,7 @@ public class PensionPdfTests
     [InlineData("earlier",401000)]
     [InlineData("later",431000)]
     [InlineData("correction",432000)]
-    public void ShowcaseReportsReconcileAndDoNotPayBeforeScenarioStart(string version,decimal expected)
+    public void RegressionReportsReconcileAndDoNotPayBeforeScenarioStart(string version,decimal expected)
     {
         var report=PensionReportParser.Parse(SyntheticPensionReport.Create(version));var agreement=Assert.Single(report.Agreements);
         Assert.Equal(expected,agreement.Balance.Value);Assert.Equal(expected,agreement.Components.Sum(c=>c.Balance.Value));
@@ -108,6 +108,10 @@ public class PensionPdfTests
         }
     }
     [Fact]
-    public void GeneratedDemoOriginalIsDeterministicForRepeatedUploads() => Assert.Equal(SyntheticPensionReport.Create("later"),SyntheticPensionReport.Create("later"));
+    public void GeneratedFixtureOriginalIsDeterministicForRepeatedUploads() => Assert.Equal(SyntheticPensionReport.Create("later"),SyntheticPensionReport.Create("later"));
+
+    [Fact]
+    public void FictionalReportGeneratorIsNotShippedInTheProductAssembly() =>
+        Assert.Null(typeof(PensionReportParser).Assembly.GetType("Banking.Api.Providers.SyntheticPensionReport"));
 
 }

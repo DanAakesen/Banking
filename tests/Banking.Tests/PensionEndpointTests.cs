@@ -83,15 +83,14 @@ public sealed class PensionEndpointTests
         var snapshotId=detail.GetProperty("snapshotId").GetString();
         using var visitor=host.Client("Demo","Demo");using var anonymous=host.Client(null);using var forged=host.Client("Demo","Live");
         foreach(var client in new[]{visitor,anonymous,forged}) {
-            var expected=client==visitor?HttpStatusCode.NotFound:client==anonymous?HttpStatusCode.Unauthorized:HttpStatusCode.Forbidden;
+            var expected=client==anonymous?HttpStatusCode.Unauthorized:HttpStatusCode.Forbidden;
             foreach(var route in new[]{$"pension/uploads/{id}",$"pension/uploads/{id}/original",$"pension/snapshots/{snapshotId}"})
                 Assert.Equal(expected,(await client.GetAsync("/api/"+route)).StatusCode);
             Assert.Equal(expected,(await client.PostAsJsonAsync($"/api/pension/uploads/{id}/approve",input)).StatusCode);
             Assert.Equal(expected,(await client.PostAsJsonAsync($"/api/pension/uploads/{id}/parse",new {version=receipt.GetProperty("version").GetString()})).StatusCode);
             Assert.Equal(expected,(await client.PostAsJsonAsync($"/api/pension/uploads/{id}/link",new{version=receipt.GetProperty("version").GetString(),snapshotId,confirm=true})).StatusCode);
         }
-        var history=await visitor.GetFromJsonAsync<JsonElement>("/api/pension/uploads");Assert.Equal(0,history.GetProperty("total").GetInt32());
-        Assert.DoesNotContain(id.ToString(),history.GetRawText());Assert.DoesNotContain(snapshotId!,history.GetRawText());
+        Assert.Equal(HttpStatusCode.Forbidden,(await visitor.GetAsync("/api/pension/uploads")).StatusCode);
         Assert.DoesNotContain("protectedOriginal",detail.GetRawText());Assert.DoesNotContain("previewJson",detail.GetRawText());
         Assert.Equal(HttpStatusCode.Unauthorized,(await anonymous.GetAsync("/api/pension/uploads")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden,(await forged.GetAsync("/api/pension/uploads")).StatusCode);
@@ -108,29 +107,29 @@ public sealed class PensionEndpointTests
         Assert.Equal(1,await host.DocumentCount());
     }
     [Fact]
-    public async Task FictionalShowcaseUsesSamePreviewApprovalHistoryOriginalAndCurrentCapitalContracts()
+    public async Task SyntheticOwnerFixtureExercisesHistoryWithoutRealFileAcceptance()
     {
-        await using var host=new Host();await host.Init();using var demo=host.Client("Demo","Demo");using var owner=host.Client();
+        await using var host=new Host();await host.Init();using var owner=host.Client();using var visitor=host.Client("Demo","Demo");
         Guid? product=null;string? productVersion=null;
         foreach(var variant in new[]{"earlier","later"}) {
-            var response=await demo.PostAsJsonAsync("/api/pension/uploads/demo",new {version=variant});response.EnsureSuccessStatusCode();
+            var response=await owner.PostAsync("/api/pension/uploads",Pdf(SyntheticPensionReport.Create(variant)));response.EnsureSuccessStatusCode();
             var receipt=await response.Content.ReadFromJsonAsync<JsonElement>();var report=receipt.GetProperty("report").Deserialize<PensionReport>(Json)!;
             if(Environment.GetEnvironmentVariable("BANKING_PENSION_BROWSER_FIXTURE_DIR") is {Length:>0} fixtures) {
                 Directory.CreateDirectory(fixtures);
                 await File.WriteAllTextAsync(Path.Combine(fixtures,"report-"+variant+".json"),JsonSerializer.Serialize(report,Json));
             }
-            var original=await demo.GetAsync("/api/pension/uploads/"+receipt.GetProperty("id").GetString()+"/original");original.EnsureSuccessStatusCode();Assert.Equal("application/pdf",original.Content.Headers.ContentType!.MediaType);
+            var original=await owner.GetAsync("/api/pension/uploads/"+receipt.GetProperty("id").GetString()+"/original");original.EnsureSuccessStatusCode();Assert.Equal("application/pdf",original.Content.Headers.ContentType!.MediaType);
             var input=new PensionApproval(receipt.GetProperty("version").GetString()!,report.ReportAsOf!.Value,report,[new(report.Agreements[0].Key,product,productVersion)],true,true);
-            var approved=await demo.PostAsJsonAsync("/api/pension/uploads/"+receipt.GetProperty("id").GetString()+"/approve",input);approved.EnsureSuccessStatusCode();
-            var records=await demo.GetFromJsonAsync<JsonElement>("/api/wealth");var row=Assert.Single(records.EnumerateArray());product=row.GetProperty("id").GetGuid();productVersion=row.GetProperty("version").GetString();
+            var approved=await owner.PostAsJsonAsync("/api/pension/uploads/"+receipt.GetProperty("id").GetString()+"/approve",input);approved.EnsureSuccessStatusCode();
+            var records=await owner.GetFromJsonAsync<JsonElement>("/api/wealth");var row=Assert.Single(records.EnumerateArray());product=row.GetProperty("id").GetGuid();productVersion=row.GetProperty("version").GetString();
             Assert.Equal(11,report.Scenarios.Length);Assert.Equal(3,report.Insurance.Length);Assert.Equal(3,Assert.Single(report.Agreements).Components.Length);
             Assert.True(report.BeforeTax&&report.TodaysMoney);
         }
-        var history=await demo.GetFromJsonAsync<JsonElement>("/api/pension/uploads");Assert.Equal(2,history.GetProperty("total").GetInt32());Assert.Equal(2,history.GetProperty("development").GetArrayLength());
+        var history=await owner.GetFromJsonAsync<JsonElement>("/api/pension/uploads");Assert.Equal(2,history.GetProperty("total").GetInt32());Assert.Equal(2,history.GetProperty("development").GetArrayLength());
         if(Environment.GetEnvironmentVariable("BANKING_PENSION_BROWSER_FIXTURE_DIR") is {Length:>0} fixtureFolder)
             await File.WriteAllTextAsync(Path.Combine(fixtureFolder,"report-correction.json"),JsonSerializer.Serialize(PensionReportParser.Parse(SyntheticPensionReport.Create("correction")),Json));
-        var summary=await demo.GetFromJsonAsync<JsonElement>("/api/wealth/summary");Assert.Equal(431000,summary.GetProperty("pension").GetDecimal());
-        var live=await owner.GetFromJsonAsync<JsonElement>("/api/pension/uploads");Assert.Equal(0,live.GetProperty("total").GetInt32());Assert.Equal(0,await host.WealthCount());
+        var summary=await owner.GetFromJsonAsync<JsonElement>("/api/wealth/summary");Assert.Equal(431000,summary.GetProperty("pension").GetDecimal());
+        Assert.Equal(HttpStatusCode.Forbidden,(await visitor.GetAsync("/api/pension/uploads")).StatusCode);Assert.Equal(1,await host.WealthCount());
     }
     [Fact]
     public async Task OwnerPreviewRetainsPrivateOriginalButDemoAndAnonymousCannotReadIt()
@@ -142,20 +141,20 @@ public sealed class PensionEndpointTests
         var original=await owner.GetAsync($"/api/pension/uploads/{id}/original");original.EnsureSuccessStatusCode();
         Assert.Contains("no-store",original.Headers.CacheControl!.ToString());Assert.Equal("attachment",original.Content.Headers.ContentDisposition!.DispositionType);
         Assert.True((await original.Content.ReadAsByteArrayAsync()).AsSpan().StartsWith("%PDF"u8));
-        using var visitor=host.Client("Demo","Demo");Assert.Equal(HttpStatusCode.NotFound,(await visitor.GetAsync($"/api/pension/uploads/{id}/original")).StatusCode);
+        using var visitor=host.Client("Demo","Demo");Assert.Equal(HttpStatusCode.Forbidden,(await visitor.GetAsync($"/api/pension/uploads/{id}/original")).StatusCode);
         using var forged=host.Client("Demo","Live");Assert.Equal(HttpStatusCode.Forbidden,(await forged.GetAsync($"/api/pension/uploads/{id}")).StatusCode);
         using var anonymous=host.Client(null);Assert.Equal(HttpStatusCode.Unauthorized,(await anonymous.GetAsync($"/api/pension/uploads/{id}/original")).StatusCode);
         owner.DefaultRequestHeaders.Remove("Origin");owner.DefaultRequestHeaders.Add("Origin","https://evil.example");
         Assert.Equal(HttpStatusCode.Forbidden,(await owner.PostAsync("/api/pension/uploads",Pdf())).StatusCode);
     }
     [Fact]
-    public async Task DemoOnlyAcceptsGeneratedFictionalSamplesAndDoesNotTouchLive()
+    public async Task DemoCannotUploadOrGenerateReportsBeforeOwnerAcceptance()
     {
         await using var host=new Host();await host.Init();using var demo=host.Client("Demo","Demo");
         Assert.Equal(HttpStatusCode.Forbidden,(await demo.PostAsync("/api/pension/uploads",Pdf())).StatusCode);
-        var result=await demo.PostAsJsonAsync("/api/pension/uploads/demo",new{version="later"});result.EnsureSuccessStatusCode();
-        var receipt=await result.Content.ReadFromJsonAsync<JsonElement>();Assert.True(receipt.GetProperty("synthetic").GetBoolean());Assert.Equal(0,await host.WealthCount());
-        using var owner=host.Client();Assert.Equal(HttpStatusCode.NotFound,(await owner.GetAsync("/api/pension/uploads/"+receipt.GetProperty("id").GetString())).StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed,(await demo.PostAsJsonAsync("/api/pension/uploads/demo",new{version="later"})).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,(await demo.GetAsync("/api/pension/uploads")).StatusCode);
+        Assert.Equal(0,await host.WealthCount());
     }
     [Fact]
     public async Task InvalidHeaderMimeSizeAndUnsupportedReportHaveVisibleSafeOutcomes()
