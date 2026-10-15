@@ -13,6 +13,7 @@ public sealed class PensionImportService(BankingDb db, Workspace workspace, Time
     IDataProtectionProvider protection, IPensionPdfReader pdf)
 {
     static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    static readonly SemaphoreSlim ReceiptWriter = new(1);
     IDataProtector Protector => protection.CreateProtector("Banking.Pension.Original.v1", workspace.Mode, workspace.DemoScope);
     void RequireAccess()
     { if (workspace.Mode == "Live" && !workspace.OwnerAuthenticated) throw new ApiFailure(403, "OWNER_REQUIRED"); }
@@ -24,16 +25,28 @@ public sealed class PensionImportService(BankingDb db, Workspace workspace, Time
         Check.That(bytes.Length > 0 && bytes.Length <= (type == "application/pdf" ? PensionReportParser.MaxBytes : 60000), "PENSION_FILE_TOO_LARGE");
         if (type == "application/pdf") Check.That(bytes.Length > 5 && bytes.AsSpan(0, 5).SequenceEqual("%PDF-"u8), "INVALID_PENSION_PDF");
         var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
-        var document = await db.PensionDocuments.SingleOrDefaultAsync(d => d.Hash == hash, ct);
-        if (document is null)
+        PensionUpload upload;
+        // Short critical section only; parsing happens after commit. The SQL application
+        // lock also serializes document creation across App Service processes/instances.
+        await ReceiptWriter.WaitAsync(ct);
+        try
         {
-            document = new() { Hash = hash, ByteLength = bytes.Length, MediaType = type, Synthetic = synthetic,
-                ProtectedOriginal = Protector.Protect(bytes) };
-            db.PensionDocuments.Add(document);
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            if (db.Database.IsSqlServer()) await DatabaseLock.AcquireTransaction(db, "pension-upload:" + workspace.DemoScope + ":" + hash, ct);
+            var document = await db.PensionDocuments.SingleOrDefaultAsync(d => d.Hash == hash, ct);
+            if (document is null)
+            {
+                document = new() { Hash = hash, ByteLength = bytes.Length, MediaType = type, Synthetic = synthetic,
+                    ProtectedOriginal = Protector.Protect(bytes) };
+                db.PensionDocuments.Add(document);
+            }
+            Check.That(document.MediaType == type, "PENSION_FILE_TYPE_MISMATCH");
+            upload = new PensionUpload { DocumentId = document.Id, UploadedAt = clock.GetUtcNow(), Status = "Uploaded" };
+            db.PensionUploads.Add(upload);
+            await db.SaveChangesAsync(ct); // Keep every receipt even when parsing later fails.
+            await transaction.CommitAsync(ct);
         }
-        var upload = new PensionUpload { DocumentId = document.Id, UploadedAt = clock.GetUtcNow(), Status = "Uploaded" };
-        db.PensionUploads.Add(upload);
-        await db.SaveChangesAsync(ct); // Retain the receipt/original even if parsing is unsupported or interrupted.
+        finally { ReceiptWriter.Release(); }
         return await Parse(upload.Id, Convert.ToBase64String(upload.Version), ct);
     }
     public async Task<object> Parse(Guid id, string version, CancellationToken ct)
@@ -137,6 +150,13 @@ public sealed class PensionImportService(BankingDb db, Workspace workspace, Time
         var canonical = JsonSerializer.Serialize(reviewed with { Agreements = reviewed.Agreements.OrderBy(a => a.Key).ToArray() }, Json);
         var hash = PensionReportParser.Key(canonical);
         var same = await db.PensionSnapshots.SingleOrDefaultAsync(s => s.DocumentId == upload.DocumentId && s.ReviewHash == hash, ct);
+        if (same is not null)
+        {
+            var accepted = JsonSerializer.Deserialize<PensionAccepted>(same.DataJson, Json)!;
+            if (!input.Products.All(p => accepted.Products.Any(saved => saved.Key == p.Key && (saved.Id == p.Id
+                || p.Id is null && upload.Status == "Approved" && same.UploadId == upload.Id))))
+                throw new ApiFailure(409, "PENSION_DUPLICATE_MAPPING_MISMATCH");
+        }
         if (upload.Status == "Approved")
         {
             Check.That(same?.Id == upload.SnapshotId, "PENSION_APPROVAL_IMMUTABLE");
@@ -229,6 +249,17 @@ public sealed class PensionImportService(BankingDb db, Workspace workspace, Time
     }
     public static PensionReport Review(PensionReport original, PensionReport submitted, PensionTarget[] products, DateOnly today)
     {
+        if (submitted is null || products is null || products.Any(p => p is null)
+            || submitted.Agreements is null || submitted.Scenarios is null || submitted.Insurance is null
+            || submitted.Agreements.Any(a => a is null || a.Balance is null || a.AnnualContribution is null || a.Components is null || a.Components.Any(c => c is null || c.Balance is null)
+                || a.Components.Select(c => c.Key).Distinct().Count() != a.Components.Length)
+            || submitted.Scenarios.Any(s => s is null || s.Payouts is null || s.Payouts.Any(p => p is null || p.Amount is null))
+            || submitted.Insurance.Any(i => i is null || i.Amount is null)
+            || submitted.Agreements.Select(a => a.Key).Distinct().Count() != submitted.Agreements.Length
+            || submitted.Scenarios.Select(s => s.StartAge).Distinct().Count() != submitted.Scenarios.Length
+            || submitted.Scenarios.Any(s => s.Payouts.Select(p => p.Key).Distinct().Count() != s.Payouts.Length)
+            || submitted.Insurance.Select(i => i.Key).Distinct().Count() != submitted.Insurance.Length)
+            throw new ApiFailure(400, "INVALID_PENSION_REVIEW");
         Check.That(products.Length > 0 && products.Length <= original.Agreements.Length
             && products.Select(p => p.Key).Distinct().Count() == products.Length
             && products.Where(p => p.Id.HasValue).Select(p => p.Id).Distinct().Count() == products.Count(p => p.Id.HasValue), "PENSION_PRODUCT_SELECTION_REQUIRED");

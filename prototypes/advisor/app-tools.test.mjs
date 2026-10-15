@@ -9,6 +9,12 @@ import {fileURLToPath} from 'node:url';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 const id=randomUUID();
+test('raw pension reports, receipts and private originals are outside advisor tool resources',async()=>{
+ let calls=0;const request=async()=>{calls++;return {};};
+ for(const resource of ['pension_uploads','pension_snapshots','pension_original','/api/pension/uploads'])
+  await assert.rejects(readAppData('synthetic-session','Live',{resource,parameters:{}},{},request),/Unsupported data resource/);
+ assert.equal(calls,0);
+});
 test('app tools load frontend assets from an isolated deployed asset root',async()=>{
  const releaseRoot=await mkdtemp(path.join(tmpdir(),'banking-deployed-assets-'));
  const packageRoot=path.join(releaseRoot,'prototypes','advisor'),assetRoot=path.join(releaseRoot,'assets','wwwroot');

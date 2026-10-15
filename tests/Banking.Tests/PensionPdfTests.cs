@@ -20,7 +20,7 @@ public class PensionPdfTests
     [Fact]
     public void SyntheticStructureSeparatesCapitalComponentsEntitlementsAndInsurance()
     {
-        var report = PensionReportParser.Parse(SyntheticPensionReport.Create("later"));
+        var report = PensionReportParser.Parse(SyntheticPensionReport.Create("rounding"));
         Assert.Equal(46, report.Pages);
         Assert.Equal(new DateOnly(2026, 9, 30), report.ReportAsOf);
         var agreement = Assert.Single(report.Agreements);
@@ -92,5 +92,22 @@ public class PensionPdfTests
         var report=PensionReportParser.Parse(builder.Build());var payouts=Assert.Single(report.Scenarios).Payouts;
         Assert.Equal(2,payouts.Length);Assert.Equal(2,payouts.Select(p=>p.Key).Distinct().Count());
     }
+    [Theory]
+    [InlineData("earlier",401000)]
+    [InlineData("later",431000)]
+    [InlineData("correction",432000)]
+    public void ShowcaseReportsReconcileAndDoNotPayBeforeScenarioStart(string version,decimal expected)
+    {
+        var report=PensionReportParser.Parse(SyntheticPensionReport.Create(version));var agreement=Assert.Single(report.Agreements);
+        Assert.Equal(expected,agreement.Balance.Value);Assert.Equal(expected,agreement.Components.Sum(c=>c.Balance.Value));
+        Assert.DoesNotContain(report.Warnings,w=>w.Code=="REPORTED_COMPONENT_TOTAL_DIFFERENCE");
+        foreach(var scenario in report.Scenarios) {
+            Assert.All(scenario.Payouts,p=>Assert.True(p.FromAge>=scenario.StartAge));
+            foreach(var range in scenario.Payouts.GroupBy(p=>new {p.FromAge,p.ToAge}))
+                Assert.Equal(range.Where(p=>p.Type!="Total").Sum(p=>p.Amount.Value),Assert.Single(range,p=>p.Type=="Total").Amount.Value);
+        }
+    }
+    [Fact]
+    public void GeneratedDemoOriginalIsDeterministicForRepeatedUploads() => Assert.Equal(SyntheticPensionReport.Create("later"),SyntheticPensionReport.Create("later"));
 
 }

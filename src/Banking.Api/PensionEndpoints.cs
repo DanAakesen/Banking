@@ -24,6 +24,7 @@ public static class PensionEndpoints
         app.MapPost("/api/pension/uploads/demo", (PensionSample input, Workspace workspace, PensionImportService service, CancellationToken ct) =>
         {
             Check.That(workspace.Mode == "Demo", "DEMO_ONLY");
+            Check.That(input.Version is "earlier" or "later" or "correction", "INVALID_PENSION_SAMPLE");
             return service.Upload(SyntheticPensionReport.Create(input.Version), "application/pdf", true, ct);
         });
         app.MapGet("/api/pension/uploads", (int? offset, PensionImportService service, CancellationToken ct) => service.History(offset ?? 0, ct));

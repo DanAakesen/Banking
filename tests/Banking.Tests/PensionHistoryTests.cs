@@ -77,7 +77,9 @@ public sealed class PensionHistoryTests
         f.Db.ChangeTracker.Clear();
         var original = await f.Service.Original(upload.GetProperty("id").GetGuid(), default);
         Assert.True(original.Bytes.AsSpan().StartsWith("%PDF"u8));
-        Assert.DoesNotContain("ProtectedOriginal", JsonSerializer.Serialize(upload));
+        Assert.False(upload.TryGetProperty("protectedOriginal",out _));
+        Assert.False(upload.TryGetProperty("previewJson",out _));
+        Assert.DoesNotContain("protectedOriginal",upload.GetRawText());
     }
     [Fact]
     public async Task ReuploadLinksCanonicalSnapshotAndDoesNotDoubleCountCurrentCapital()
@@ -206,5 +208,19 @@ public sealed class PensionHistoryTests
         f.Db.ChangeTracker.Clear();
         await f.Service.Approve(upload.GetProperty("id").GetGuid(),input with {SupersedesId=prior.Id},default);
         Assert.Equal(row.Id,(await f.Db.WealthRecords.SingleAsync()).Id);Assert.Equal(2,await f.Db.PensionSnapshots.CountAsync());
+    }
+    [Fact]
+    public async Task ChangedDuplicateMappingIsRejectedAndNullReviewMembersAreClientErrors()
+    {
+        await using var f=new Fixture();await f.Init();var bytes=SyntheticPensionReport.Create("later");
+        var first=Element(await f.Service.Upload(bytes,"application/pdf",false,default));var input=f.Approval(first);
+        await f.Service.Approve(first.GetProperty("id").GetGuid(),input,default);f.Db.ChangeTracker.Clear();
+        var second=Element(await f.Service.Upload(bytes,"application/pdf",false,default));input=f.Approval(second);
+        foreach(var bad in new[]{input with {Products=null!},input with {Reviewed=null!},input with {Reviewed=input.Reviewed with {Agreements=null!}}}) {
+            Assert.Equal(400,(await Assert.ThrowsAsync<ApiFailure>(()=>f.Service.Approve(second.GetProperty("id").GetGuid(),bad,default))).Status);
+        }
+        var changed=input with {Products=[new(input.Products[0].Key,Guid.NewGuid(),input.Products[0].Version)]};
+        Assert.Equal("PENSION_DUPLICATE_MAPPING_MISMATCH",(await Assert.ThrowsAsync<ApiFailure>(()=>f.Service.Approve(second.GetProperty("id").GetGuid(),changed,default))).Code);
+        Assert.Equal(1,await f.Db.PensionSnapshots.CountAsync());Assert.Equal(431000,(await f.Db.WealthRecords.SingleAsync()).Value);
     }
 }

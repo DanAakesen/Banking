@@ -3,25 +3,28 @@ const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=r
 const {chromium}=require('playwright');
 const root=path.resolve(__dirname,'../../src/Banking.Api/wwwroot'),out=path.resolve(__dirname,'../../artifacts/pension-history/browser'),origin='https://banking.fixture';
 const csp="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; frame-src 'self' https://www.tradingview-widget.com";
-const num=(value,page,unit='DKK')=>({value,source:{page,section:'Synthetic source fixture',unit,status:'Reported',asOf:'2026-09-30',confidence:'Matched source pattern; review required'}});
-const report=(variant='later')=>({parserVersion:'pensionsinfo-text-1',pages:46,reportAsOf:variant==='earlier'?'2025-12-31':'2026-09-30',beforeTax:true,todaysMoney:true,agreements:[{key:'agreement-key',provider:'Demo Pension',name:'Demo Pension · pension 1',currency:'DKK',asOf:variant==='earlier'?'2025-12-31':'2026-09-30',dateSource:{page:42,section:'Balance date',unit:'Date',status:'Reported'},balance:num(variant==='correction'?432000:variant==='earlier'?401000:431000,3),annualContribution:num(36000,4,'DKK/year'),components:[{key:'c1',type:'Ratepension',balance:num(160000,42)},{key:'c2',type:'Ratepension',balance:num(110000,42)},{key:'c3',type:'Lifetime',balance:num(160000,42)}]}],scenarios:Array.from({length:11},(_,i)=>({startAge:65+i,payouts:[{key:'p'+i,provider:'ATP',type:'ATP',fromAge:70,toAge:74,amount:num(12000,20+2*i,'DKK/year'),minimumAge:null,durationYears:null,taxMarker:null}]})),insurance:[{key:'insurance',provider:'Demo Pension',type:'Death',amount:num(600000,3)}],warnings:[{code:'REPORTED_COMPONENT_TOTAL_DIFFERENCE',page:3,section:'Capital'},{code:'NO_HOLDINGS_OR_RETURN_HISTORY',page:null,section:'Coverage'},{code:'UNPARSED_SECTIONS_REQUIRE_ORIGINAL_REVIEW',page:null,section:'Coverage'},{code:'PAGE_REQUIRES_ORIGINAL_REVIEW',page:43,section:'Coverage'}]});
+let reports; const report=(variant="later")=>structuredClone(reports[variant]);
 async function run(browser,{width,theme,lang='en',live=false}){
  const context=await browser.newContext({viewport:{width,height:1000},hasTouch:width===390,reducedMotion:'reduce'}),page=await context.newPage(),errors=[],writes=[],receipts=[],snapshots=[],records=[];
- let next=1,conflict=false;
+ let next=1,conflict=false,slowOwnerUpload=false,role=live?'Owner':'Demo';
  page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(({theme,lang,live})=>{localStorage.setItem('banking.preferences.v1',JSON.stringify({theme,lang,aiGlass:false}));sessionStorage.setItem('banking.workspace',live?'Live':'Demo');document.addEventListener('securitypolicyviolation',e=>(window.__csp||=[]).push(e.violatedDirective));},{theme,lang,live});
  await page.route('**/*',async route=>{
   const req=route.request(),u=new URL(req.url());if(u.origin!==origin)return route.abort();
   if(u.pathname.startsWith('/api/')){
    const p=u.pathname.slice(5),method=req.method(),mode=req.headers()['x-banking-mode']||'Demo';let status=200,body={};
+   const isolatedDemo=live&&mode==='Demo';
    const detail=u=>({...u,existingApproval:snapshots.filter(s=>s.hash===u.hash).at(-1)||null,products:records,suggestedProducts:u.report.agreements.map(a=>({key:a.key,product:records[0]||null}))});
-   if(p==='browser/status')body={role:live?'Owner':'Demo',passwordConfigured:true,localAdvisor:false};
-   else if(p==='mode')body={mode:live?'Live':'Demo',availableModes:live?['Demo','Live']:['Demo']};
-   else if(p==='wealth'&&method==='GET')body=records;
-   else if(p==='wealth/summary')body={currency:'DKK',bankCash:null,pension:records.reduce((s,r)=>s+r.value,0),investments:0,debt:0,recordedNetWealth:null,excludingPension:null,accounts:[]};
+   if(p==='browser/logout'){role=null;body={};}
+   else if(p==='browser/demo'){role='Demo';body={role:'Demo'};}
+   else if(p==='browser/status')body={role,passwordConfigured:true,localAdvisor:false};
+   else if(p==='mode')body={mode,availableModes:role==='Owner'?['Demo','Live']:['Demo']};
+   else if(p==='wealth'&&method==='GET')body=isolatedDemo?[]:records;
+   else if(p==='wealth/summary')body={currency:'DKK',bankCash:null,pension:isolatedDemo?0:records.reduce((s,r)=>s+r.value,0),investments:0,debt:0,recordedNetWealth:null,excludingPension:null,accounts:[]};
+   else if(p==='pension/uploads'&&method==='GET'&&isolatedDemo)body={total:0,offset:0,items:[],development:[],developmentHasMore:false};
    else if(p==='pension/uploads'&&method==='GET')body={total:receipts.length,offset:0,items:receipts.slice().reverse(),development:snapshots.filter(s=>!snapshots.some(n=>n.supersedesId===s.id)).map(s=>({id:s.id,asOf:s.asOf,approvedAt:s.approvedAt,currency:'DKK',products:['Demo Pension · pension 1'],sourceDates:[s.asOf],capital:s.accepted.report.agreements[0].balance.value,contributions:36000,returns:null})),developmentHasMore:false};
    else if((p==='pension/uploads/demo'||p==='pension/uploads')&&method==='POST'){
-    const variant=live?'later':req.postDataJSON().version;
+    const variant=live?'later':req.postDataJSON().version;if(slowOwnerUpload)await new Promise(resolve=>setTimeout(resolve,250));
     if(live){assert.equal(req.headers()['content-type'],'application/pdf');assert.match(req.postDataBuffer().toString(),/^%PDF/);}
     const data={id:'receipt-'+next++,uploadedAt:'2026-10-15T12:00:00Z',status:'NeedsReview',errorCode:null,version:'AAAAAAAAAAE=',hash:(variant==='later'?'a':variant==='earlier'?'b':'c').repeat(64),mediaType:'application/pdf',byteLength:1700000,synthetic:!live,parserVersion:'pensionsinfo-text-1',report:report(variant),financialSaved:false,snapshotId:null};receipts.push(data);body=detail(data);
    }
@@ -44,6 +47,7 @@ async function run(browser,{width,theme,lang='en',live=false}){
    else if(p==='accounts'||p==='categories')body=[];
    else if(p==='transactions')body={items:[],total:0};
    else if(p==='account-insights')body={availableBalance:null,income:null,spending:null,net:null,retentionPercent:null,categories:[],coverage:{accountCount:0,sufficientHistory:false,oldestAccountSync:null}};
+   else if(isolatedDemo&&method==='GET')body={};
    else throw Error('Unexpected fixture '+method+' '+p);
    return route.fulfill({status,contentType:'application/json',headers:{'X-Banking-Mode':mode},body:JSON.stringify(body)});
   }
@@ -65,8 +69,9 @@ async function run(browser,{width,theme,lang='en',live=false}){
   await page.reload();await ready();await page.locator('[data-upload]').first().click();await page.waitForSelector('#pension-original');assert.equal(await page.locator('#pension-confirm').count(),0);await inspect('history');
   const download=page.waitForEvent('download');await page.locator('#pension-original').click();assert.match((await download).suggestedFilename(),/\.pdf$/);
   if(!live){await page.reload();await ready();await upload('later');await page.locator('#pension-existing-values').click();await page.waitForSelector('#pension-existing-preview p');await page.locator('#pension-reuse').click();await page.waitForSelector('#pension-review-form',{state:'detached'});await ready();assert.equal(snapshots.length,1);assert.equal(records[0].value,431000);await upload('correction');await approve();await page.waitForSelector('#pension-correction-confirm');await page.locator('#pension-view-prior').click();await page.waitForSelector('#pension-prior-values p');assert.equal(records[0].value,431000);await page.locator('#pension-correction-confirm').check();await page.locator('#pension-review-form [type=submit]').click();await page.waitForSelector('#pension-review-form',{state:'detached'});await ready();assert.equal(records[0].value,432000);assert.equal(receipts.length,3);assert.equal(snapshots.length,2);await inspect('corrected');}
+  if(live){await page.reload();await ready();slowOwnerUpload=true;await page.locator('#pension-file').setInputFiles({name:'synthetic.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-owner-synthetic-fixture')});await page.locator('.sidebar .account-menu summary').click();await page.locator('[data-action=logout]').click();await page.locator('#access-demo').click();await page.waitForURL('**/#/overview',{timeout:10000});await page.evaluate(()=>location.hash='/pension');await ready();await page.waitForTimeout(350);assert.equal(await page.locator('#pension-original').count(),0);assert.equal(await page.locator('#pension-file').count(),0);assert.match(await page.locator('#pension-history-list').innerText(),/0 upload/);await inspect('owner-to-demo-cleared');}
   await page.goto(origin+'/#/accounts');await ready();await inspect('accounts-reference');
   console.log(`PASS pension ${width}px ${theme} ${lang} ${live?'owner':'demo'}`);
  }finally{await context.close();}
 }
-(async()=>{await fs.mkdir(out,{recursive:true});const browser=await chromium.launch({headless:true,executablePath:'/usr/bin/chromium'});try{for(const width of [1440,1024,390])for(const theme of ['graphite','light'])await run(browser,{width,theme});await run(browser,{width:390,theme:'light',lang:'da'});await run(browser,{width:1440,theme:'light',live:true});}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});
+(async()=>{await fs.mkdir(out,{recursive:true});reports=Object.fromEntries(await Promise.all(['earlier','later','correction'].map(async v=>[v,JSON.parse(await fs.readFile(path.join(out,'report-'+v+'.json'),'utf8'))])));const browser=await chromium.launch({headless:true,executablePath:'/usr/bin/chromium'});try{for(const width of [1440,1024,390])for(const theme of ['graphite','light'])await run(browser,{width,theme});await run(browser,{width:390,theme:'light',lang:'da'});await run(browser,{width:1440,theme:'light',live:true});}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});
