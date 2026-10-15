@@ -9,6 +9,11 @@ on:
         description: Full SHA of the current main commit to package
         required: true
         type: string
+      diagnose_schema:
+        description: Run only the main-container marker and read-only pension schema diagnostic
+        required: false
+        default: false
+        type: boolean
       confirm_deploy:
         description: Enter DEPLOY to publish this reviewed main release
         required: false
@@ -114,7 +119,7 @@ jobs:
     needs: validate-and-package
     if: >-
       needs.validate-and-package.result == 'success' &&
-      vars.BANKING_AZURE_DEPLOY_ENABLED == 'true' &&
+      vars.BANKING_AZURE_DEPLOY_ENABLED == 'true' && !inputs.diagnose_schema &&
       ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
        (github.event_name == 'workflow_dispatch' &&
         github.ref == 'refs/heads/main' && inputs.confirm_deploy == 'DEPLOY'))
@@ -254,3 +259,110 @@ jobs:
           path: ${{ runner.temp }}/banking-evidence/*.json
           if-no-files-found: warn
           retention-days: 30
+
+  schema-diagnostic:
+    needs: validate-and-package
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+      needs.validate-and-package.result == 'success' && inputs.diagnose_schema &&
+      inputs.confirm_deploy == '' && vars.BANKING_AZURE_DEPLOY_ENABLED == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    concurrency:
+      group: banking-azure-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - name: Check out the exact diagnostic source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.validate-and-package.outputs.source_sha }}
+
+      - name: Require diagnostics only, fixed target and disabled publication
+        shell: bash
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          DEPLOY_ENABLED: ${{ vars.BANKING_AZURE_DEPLOY_ENABLED }}
+          SOURCE_SHA: ${{ needs.validate-and-package.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$DEPLOY_ENABLED" == "false" ]]
+          [[ "$AZURE_CLIENT_ID" == "7dad5d82-6946-4be4-bcbc-fd446cab1e55" ]]
+          [[ "$AZURE_TENANT_ID" == "802efa29-17f2-4a79-8f5f-38f087aed96a" ]]
+          [[ "$AZURE_SUBSCRIPTION_ID" == "0ac7d719-89bc-4100-be87-a79d33e953a7" ]]
+          [[ "$AZURE_WEBAPP_NAME" == "banking-dan-0ac7d719" ]]
+          [[ "$AZURE_RESOURCE_GROUP" == "rg-banking-prod-weu" ]]
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          [[ "$(git rev-parse refs/remotes/origin/main)" == "$SOURCE_SHA" ]]
+
+      - name: Authenticate to Azure with GitHub OIDC
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Download the immutable artifact and enforce its GitHub digest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ needs.validate-and-package.outputs.artifact_id }}
+          ARTIFACT_DIGEST: ${{ needs.validate-and-package.outputs.artifact_digest }}
+        run: |
+          set -euo pipefail
+          [[ "$ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          [[ "$ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+          artifact_zip="$RUNNER_TEMP/banking-artifact.zip"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > "$artifact_zip"
+          python3 - "$artifact_zip" "$RUNNER_TEMP/banking-release" "$ARTIFACT_DIGEST" <<'PYTHON'
+          import hashlib, pathlib, sys, zipfile
+          archive, output = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+          with archive.open('rb') as stream:
+              if hashlib.file_digest(stream, 'sha256').hexdigest() != sys.argv[3]:
+                  raise RuntimeError('GitHub artifact digest mismatch')
+          output.mkdir()
+          with zipfile.ZipFile(archive) as package:
+              expected = {'banking-release.zip', 'manifest.json', 'checksums.txt'}
+              if set(package.namelist()) != expected or len(package.namelist()) != len(expected):
+                  raise RuntimeError('Unexpected artifact files')
+              for name in expected:
+                  entry = package.getinfo(name)
+                  if entry.file_size > 256 * 1024 * 1024:
+                      raise RuntimeError('Artifact file exceeded size limit')
+                  with package.open(entry) as source, (output / name).open('wb') as target:
+                      import shutil
+                      shutil.copyfileobj(source, target)
+          PYTHON
+
+      - name: Prove main-container completion, then check schema metadata only
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.validate-and-package.outputs.source_sha }}
+          ARTIFACT_DIGEST: ${{ needs.validate-and-package.outputs.artifact_digest }}
+        run: |
+          set -euo pipefail
+          (cd "$RUNNER_TEMP/banking-release" && sha256sum -c checksums.txt)
+          python3 scripts/deploy-banking.py diagnose-schema \
+            --source-sha "$SOURCE_SHA" \
+            --package "$RUNNER_TEMP/banking-release/banking-release.zip" \
+            --manifest "$RUNNER_TEMP/banking-release/manifest.json" \
+            --artifact-digest "$ARTIFACT_DIGEST" \
+            --evidence-dir "$RUNNER_TEMP/banking-schema-evidence"
+
+      - name: Upload bounded invocation and completion evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: banking-schema-diagnostic-${{ needs.validate-and-package.outputs.source_sha }}
+          path: ${{ runner.temp }}/banking-schema-evidence/*.json
+          if-no-files-found: warn
+          retention-days: 7

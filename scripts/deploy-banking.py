@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import http.client
 import json
+import os
 import re
 import secrets
 import socket
@@ -83,7 +84,8 @@ def capture_phase(label: str):
 def endpoint_label(parsed: urllib.parse.ParseResult) -> str:
     # No raw URL, query, path, headers or command may enter diagnostic evidence.
     if parsed.netloc == f"{APP}.scm.azurewebsites.net":
-        return {"/api/command": "scm-command", "/api/deployments/latest": "scm-latest-deployment",
+        return {"/api/command": "scm-command", "/exec/execute": "main-container-execute",
+                "/api/deployments/latest": "scm-latest-deployment",
                 "/api/zipdeploy": "scm-zipdeploy"}.get(parsed.path, "scm-other")
     return {"/health": "app-health", "/api/runtime-info": "app-runtime"}.get(parsed.path, "app-other")
 
@@ -117,14 +119,15 @@ def require_sha(value: str) -> str:
     return value
 
 
-def schema_invocation(source_sha: str, archive_sha256: str) -> dict[str, Any]:
+def schema_invocation(source_sha: str, archive_sha256: str, check: str = "schema") -> dict[str, Any]:
     """Private result contract; submitting a command never establishes completion."""
     require_sha(source_sha)
-    if not re.fullmatch(r"[0-9a-f]{64}", archive_sha256):
+    if check not in {"marker", "schema"} or not re.fullmatch(r"[0-9a-f]{64}", archive_sha256):
         raise ReleaseError("Schema invocation archive checksum is invalid.")
     invocation = secrets.token_hex(16)
     issued = int(time.time())
-    return {"sourceSha": source_sha, "archiveSha256": archive_sha256,
+    return {"app": APP, "scope": ["Demo", "Live"], "check": check,
+            "sourceSha": source_sha, "archiveSha256": archive_sha256,
             "invocationId": invocation, "requestedAt": issued,
             "expiresAt": issued + SCHEMA_RESULT_TTL_SECONDS,
             "markerPath": schema_marker_path(source_sha, invocation)}
@@ -134,13 +137,15 @@ def schema_marker_path(source_sha: str, invocation_id: str) -> str:
     require_sha(source_sha)
     if not re.fullmatch(r"[0-9a-f]{32}", invocation_id):
         raise ReleaseError("Schema invocation identity is invalid.")
-    return f"/home/Banking/releases/.schema-preflight/{source_sha}/{invocation_id}.json"
+    return f"/home/Banking/releases/.schema-preflight/{source_sha}/{invocation_id}/result.json"
 
 
 def validate_schema_invocation(invocation: dict[str, Any]) -> None:
     try:
         if (not isinstance(invocation, dict) or set(invocation) !=
-            {"sourceSha", "archiveSha256", "invocationId", "requestedAt", "expiresAt", "markerPath"}
+            {"app", "scope", "check", "sourceSha", "archiveSha256", "invocationId", "requestedAt", "expiresAt", "markerPath"}
+            or invocation["app"] != APP or invocation["scope"] != ["Demo", "Live"]
+            or invocation["check"] not in {"marker", "schema"}
             or not all(isinstance(invocation[key], str) for key in ("sourceSha", "archiveSha256", "invocationId", "markerPath"))
             or not re.fullmatch(r"[0-9a-f]{64}", invocation["archiveSha256"])
             or invocation["markerPath"] != schema_marker_path(invocation["sourceSha"], invocation["invocationId"])
@@ -152,19 +157,20 @@ def validate_schema_invocation(invocation: dict[str, Any]) -> None:
         raise ReleaseError("Schema invocation binding is invalid.") from None
 
 
-def validate_schema_result(raw: bytes, invocation: dict[str, Any], now: int) -> dict[str, Any]:
+def validate_schema_result(raw: bytes, invocation: dict[str, Any], now: int,
+                           *, require_success: bool = True) -> dict[str, Any]:
     """Accept bounded terminal metadata only. Never echo marker contents or exceptions."""
     validate_schema_invocation(invocation)
     try:
         if not raw or len(raw) > 4096:
             raise ValueError()
         result = json.loads(raw)
-        expected = {"schemaVersion", "app", "sourceSha", "archiveSha256", "invocationId", "requestedAt",
+        expected = {"schemaVersion", "app", "check", "sourceSha", "archiveSha256", "invocationId", "requestedAt",
                     "expiresAt", "startedAt", "finishedAt", "state", "exitCode", "scope"}
         if not isinstance(result, dict) or set(result) != expected:
             raise ValueError()
         if (type(result["schemaVersion"]) is not int or result["schemaVersion"] != 1
-            or result["app"] != APP or result["scope"] != ["Demo", "Live"]
+            or result["app"] != APP or result["scope"] != ["Demo", "Live"] or result["check"] != invocation["check"]
             or any(result[key] != invocation[key] for key in
                    ("sourceSha", "archiveSha256", "invocationId", "requestedAt", "expiresAt"))
             or any(type(result[key]) is not int for key in
@@ -172,16 +178,19 @@ def validate_schema_result(raw: bytes, invocation: dict[str, Any], now: int) -> 
             or not invocation["requestedAt"] - 30 <= result["startedAt"] <= result["finishedAt"] <= invocation["expiresAt"]
             or not invocation["requestedAt"] - 30 <= now <= invocation["expiresAt"]
             or result["finishedAt"] > now + 30
-            or result["state"] != "completed" or result["exitCode"] != 0):
+            or result["state"] != "completed" or not 0 <= result["exitCode"] <= 255
+            or (require_success and result["exitCode"] != 0)):
             raise ValueError()
     except (ValueError, TypeError, KeyError, UnicodeDecodeError):
         raise ReleaseError("Schema result is invalid, stale, incomplete or unsuccessful.") from None
-    return {"verified": True, "sourceSha": invocation["sourceSha"],
+    return {"verified": result["exitCode"] == 0, "completed": True,
+            "check": invocation["check"], "exitCode": result["exitCode"], "sourceSha": invocation["sourceSha"],
             "archiveSha256": invocation["archiveSha256"], "invocationId": invocation["invocationId"],
             "scope": ["Demo", "Live"], "finishedAt": result["finishedAt"]}
 
 
-def wait_for_schema_result(invocation: dict[str, Any], read_metadata) -> dict[str, Any]:
+def wait_for_schema_result(invocation: dict[str, Any], read_metadata,
+                           *, require_success: bool = True) -> dict[str, Any]:
     """Adapter-independent polling: accepted/inflight/missing can never pass a release."""
     validate_schema_invocation(invocation)
     deadline = time.monotonic() + SCHEMA_RESULT_TTL_SECONDS
@@ -190,7 +199,7 @@ def wait_for_schema_result(invocation: dict[str, Any], read_metadata) -> dict[st
         if time.monotonic() >= deadline:
             break
         if raw is not None:
-            return validate_schema_result(raw, invocation, int(time.time()))
+            return validate_schema_result(raw, invocation, int(time.time()), require_success=require_success)
         time.sleep(POLL_SECONDS)
     raise ReleaseError("Schema command has no verified terminal result before its deadline.")
 
@@ -200,8 +209,8 @@ def run_az(*args: str) -> str:
         result = subprocess.run(
             ["az", *args], check=False, capture_output=True, text=True, timeout=120
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise ReleaseError("Azure CLI is unavailable or did not finish.") from exc
+    except (OSError, subprocess.TimeoutExpired):
+        raise ReleaseError("Azure CLI is unavailable or did not finish; output was suppressed.") from None
     if result.returncode:
         # Azure CLI errors can contain account or service details. Do not echo its output.
         raise ReleaseError("Azure CLI command failed; output was suppressed.")
@@ -692,18 +701,20 @@ def post_zip(token: str, archive: Path) -> None:
         raise ReleaseError(f"SCM upload returned HTTP {status}.")
 
 
-def stage_and_verify_pension_schema(token: str, package: Path, source_sha: str,
-                                    expected_sha256: str) -> dict[str, Any]:
-    """Stage the immutable ZIP away from wwwroot, then run the app's read-only schema gate."""
+def stage_pension_candidate(token: str, package: Path, source_sha: str,
+                            expected_sha256: str) -> dict[str, Any]:
+    """SCM can stage files, but cannot authenticate the SQL gate as the main app MI."""
     require_sha(source_sha)
     if not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
         raise ReleaseError("Release archive checksum is invalid for the schema preflight.")
+    if sha256_file(package) != expected_sha256:
+        raise ReleaseError("Local schema-preflight archive checksum differs from the candidate.")
     remote_root = "/home/Banking/releases"
     remote_zip = f"{remote_root}/{source_sha}.zip"
     remote_stage = f"{remote_root}/{source_sha}"
     decision_output = remote_command(
         token,
-        "set -e; mkdir -p /home/Banking/releases; "
+        "set -e; " + private_path_guard() + "; mkdir -p /home/Banking/releases; "
         f"if test -L {remote_zip}; then exit 17; "
         f"elif test -f {remote_zip}; then "
         f"printf '%s  %s\\n' {expected_sha256} {remote_zip} | sha256sum -c -; "
@@ -721,14 +732,177 @@ def stage_and_verify_pension_schema(token: str, package: Path, source_sha: str,
     elif decision != ["REUSE"]:
         raise ReleaseError("SCM did not confirm a safe schema-preflight archive reuse or upload.")
     command = (
-        "set -e; "
+        "set -e; " + private_path_guard() + "; "
         f"printf '%s  %s\\n' {expected_sha256} {remote_zip} | sha256sum -c -; "
+        f"test ! -L {remote_stage}; "
         f"rm -rf -- {remote_stage}; mkdir {remote_stage}; "
         f"unzip -oq {remote_zip} -d {remote_stage}; "
-        f"cd {remote_stage}; dotnet Banking.Api.dll --verify-pension-schema"
+        f"test -s {remote_stage}/Banking.Api.dll"
     )
     remote_command(token, command)
-    return {"verified": True, "archiveSha256": expected_sha256, "stagedPath": remote_stage}
+    return {"archiveSha256": expected_sha256, "stagedPath": remote_stage}
+
+
+def private_path_guard() -> str:
+    return ('for path in /home /home/Banking /home/Banking/releases '
+            '/home/Banking/releases/.schema-preflight; do test ! -L "$path" || exit 1; done')
+
+
+def private_json(path: Path, value: dict[str, Any]) -> None:
+    # Write-once receipt is durable before asynchronous submission. No secrets are accepted.
+    data = (json.dumps(value, sort_keys=True, indent=2) + "\n").encode()
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "wb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def main_container_script(invocation: dict[str, Any], receipt_sha256: str) -> bytes:
+    """Only fixed read-only commands; never launch the web host or capture its output."""
+    validate_schema_invocation(invocation)
+    if not re.fullmatch(r"[0-9a-f]{64}", receipt_sha256):
+        raise ReleaseError("Invalid invocation receipt checksum.")
+    folder = str(Path(invocation["markerPath"]).parent)
+    source = invocation["sourceSha"]
+    archive = f"/home/Banking/releases/{source}.zip"
+    common = {"schemaVersion": 1, **{key: invocation[key] for key in
+              ("app", "scope", "check", "sourceSha", "archiveSha256", "invocationId", "requestedAt", "expiresAt")}}
+    # All embedded values have been validated as fixed labels, integers or hex; no env values are serialized.
+    prefix = json.dumps(common, separators=(",", ":"))[:-1]
+    schema = ""
+    if invocation["check"] == "schema":
+        schema = f'''
+  mkdir -m 700 {folder}/candidate
+  unzip -oq {archive} -d {folder}/candidate
+  cd {folder}/candidate
+  test -s Banking.Api.dll
+  remaining=$(({invocation['expiresAt']} - $(date +%s) - 5))
+  test "$remaining" -gt 0
+  if test "$remaining" -gt 60; then remaining=60; fi
+  timeout --signal=TERM --kill-after=5s "${{remaining}}s" dotnet Banking.Api.dll --verify-pension-schema
+'''
+    return f'''#!/usr/bin/env bash
+exec >/dev/null 2>&1
+set -u
+umask 077
+{private_path_guard()} || exit 1
+test ! -L /home/Banking/releases/.schema-preflight/{source} || exit 1
+test ! -L {folder} || exit 1
+cd {folder} || exit 1
+mkdir -m 700 run.lock || exit 1
+started=$(date +%s) || exit 1
+remaining=$(({invocation['expiresAt']} - started - 5))
+test "$remaining" -gt 0 || exit 1
+timeout --signal=TERM --kill-after=5s "${{remaining}}s" bash -e <<'BANKING_READ_ONLY'
+  test "$(date +%s)" -ge {invocation['requestedAt'] - 30}
+  test "$(date +%s)" -lt {invocation['expiresAt']}
+  test "${{WEBSITE_SITE_NAME:-}}" = {APP}
+  # Presence only; no MI endpoint/header/token or configuration is emitted or exported.
+  test -n "${{IDENTITY_ENDPOINT:-}}"
+  test -n "${{IDENTITY_HEADER:-}}"
+  printf '%s  %s\\n' {receipt_sha256} {folder}/request.json | sha256sum -c -
+  test ! -L {archive}
+  printf '%s  %s\\n' {invocation['archiveSha256']} {archive} | sha256sum -c -
+{schema}
+BANKING_READ_ONLY
+code=$?
+finished=$(date +%s) || exit 1
+if test "$finished" -gt {invocation['expiresAt']}; then code=124; fi
+printf '%s,"startedAt":%s,"finishedAt":%s,"state":"completed","exitCode":%s}}\\n' '{prefix}' "$started" "$finished" "$code" > result.tmp
+chmod 600 result.tmp
+test ! -e result.json && test ! -L result.json || exit 1
+mv -n result.tmp result.json
+# Delete only this invocation's extracted candidate; retain private terminal metadata.
+rm -rf -- {folder}/candidate
+'''.encode()
+
+
+def read_schema_metadata(token: str, invocation: dict[str, Any], path: str) -> bytes | None:
+    validate_schema_invocation(invocation)
+    if path != invocation["markerPath"]:
+        raise ReleaseError("Schema metadata path does not match its invocation.")
+    remaining = invocation["expiresAt"] - int(time.time())
+    if remaining <= 0:
+        raise ReleaseError("Schema metadata deadline expired.")
+    status, data, _ = request(
+        "GET", SCM_URL + "/api/vfs" + path.removeprefix("/home"), token,
+        timeout=min(10, remaining), max_bytes=4096, allow_http_error=True,
+    )
+    if status == 404:
+        return None
+    if status != 200:
+        raise ReleaseError("Private schema metadata could not be read.")
+    return data
+
+
+def run_main_container_check(token: str, source_sha: str, archive_sha256: str,
+                             check: str, evidence_dir: Path) -> dict[str, Any]:
+    invocation = schema_invocation(source_sha, archive_sha256, check)
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    stem = f"{check}-{invocation['invocationId']}"
+    receipt = evidence_dir / f"{stem}-invocation.json"
+    private_json(receipt, invocation)  # Persist identity/path before any launch or remote writes.
+    folder = str(Path(invocation["markerPath"]).parent)
+    parent = str(Path(folder).parent)
+    remote_command(token, f"set -e; umask 077; {private_path_guard()}; "
+                   f"test ! -L {parent}; mkdir -p {parent}; chmod 700 {parent}; mkdir -m 700 {folder}")
+    script = main_container_script(invocation, sha256_file(receipt))
+    for name, data in (("request.json", receipt.read_bytes()), ("command.sh", script)):
+        status, _, _ = request("PUT", SCM_URL + "/api/vfs" + folder.removeprefix("/home") + "/" + name,
+                               token, body=data, content_type="application/octet-stream", timeout=15, max_bytes=4096)
+        if status not in (200, 201, 202, 204):
+            raise ReleaseError("Private invocation staging failed.")
+    remote_command(token, f"set -e; {private_path_guard()}; test ! -L {parent}; test ! -L {folder}; "
+                   f"chmod 600 {folder}/request.json {folder}/command.sh; "
+                   f"printf '%s  %s\\n' {hashlib.sha256(script).hexdigest()} {folder}/command.sh | sha256sum -c -")
+    remaining = invocation["expiresAt"] - int(time.time())
+    if remaining <= 0:
+        raise ReleaseError("Main-container invocation expired before submission.")
+    # Azure CLI's webapp_exec.py uses this authenticated main-container endpoint.
+    # Args is an actual array, not Kudu /api/command's .NET Arguments string.
+    # HTTP 202 proves acceptance only; response content is never used as execution evidence.
+    status, _, _ = request(
+        "POST", SCM_URL + "/exec/execute", token,
+        body=json.dumps({"Command": "/bin/bash", "Args": [folder + "/command.sh"],
+                         "WorkingDirectory": folder}).encode(),
+        content_type="application/json", timeout=min(30, remaining), max_bytes=4096,
+    )
+    if status != 202:
+        raise ReleaseError("Main-container command was not accepted.")
+    result = wait_for_schema_result(
+        invocation, lambda path: read_schema_metadata(token, invocation, path), require_success=False,
+    )
+    private_json(evidence_dir / f"{stem}-result.json", result)
+    if not result["verified"]:
+        raise ReleaseError(f"Main-container {check} check completed unsuccessfully; see bounded terminal evidence.")
+    return result
+
+
+def stage_and_verify_pension_schema(token: str, package: Path, source_sha: str,
+                                    expected_sha256: str, evidence_dir: Path) -> dict[str, Any]:
+    stage = stage_pension_candidate(token, package, source_sha, expected_sha256)
+    marker = run_main_container_check(token, source_sha, expected_sha256, "marker", evidence_dir)
+    schema = run_main_container_check(token, source_sha, expected_sha256, "schema", evidence_dir)
+    return {**stage, **schema, "mainContainerMarker": marker}
+
+
+def diagnose_schema(args: argparse.Namespace) -> dict[str, Any]:
+    source_sha = require_sha(args.source_sha)
+    if not re.fullmatch(r"[0-9a-f]{64}", args.artifact_digest):
+        raise ReleaseError("Diagnostic artifact digest is invalid.")
+    package = Path(args.package)
+    manifest = verify_manifest(package, Path(args.manifest), source_sha)
+    verify_azure_context()
+    evidence_dir = Path(args.evidence_dir)
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    private_json(evidence_dir / "diagnostic.json", {
+        "sourceSha": source_sha, "archiveSha256": manifest["archive"]["sha256"],
+        "artifactDigest": args.artifact_digest,
+        "executionTransport": "scm-exec-array", "publishes": False, "migrations": False,
+    })
+    return stage_and_verify_pension_schema(access_token(), package, source_sha,
+                                           manifest["archive"]["sha256"], evidence_dir)
 
 
 def verify_snapshot(snapshot_path: Path, source_sha: str,
@@ -791,7 +965,7 @@ def publish(args: argparse.Namespace) -> dict[str, Any]:
     new_deployment: dict[str, Any] | None = None
     try:
         result["pensionSchemaGate"] = stage_and_verify_pension_schema(
-            token, package, source_sha, manifest["archive"]["sha256"]
+            token, package, source_sha, manifest["archive"]["sha256"], evidence_dir
         )
         result["pensionSchemaVerified"] = True
         attempted = True
@@ -895,7 +1069,7 @@ def write_result(directory: Path, result: dict[str, Any]) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    for command in ("capture", "publish"):
+    for command in ("capture", "publish", "diagnose-schema"):
         child = subparsers.add_parser(command)
         child.add_argument("--source-sha", required=True)
         child.add_argument("--package", required=True)
@@ -912,6 +1086,8 @@ def main() -> int:
     try:
         if args.command == "capture":
             capture(args)
+        elif args.command == "diagnose-schema":
+            diagnose_schema(args)
         else:
             publish(args)
         return 0

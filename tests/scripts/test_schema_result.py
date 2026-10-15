@@ -1,4 +1,4 @@
-"""Candidate/invocation completion contract, independent of an unverified Azure exec route."""
+"""Candidate-bound terminal metadata; submission never proves execution."""
 import copy
 import json
 import unittest
@@ -15,7 +15,7 @@ class SchemaResultTests(unittest.TestCase):
             return deploy.schema_invocation("a" * 40, "b" * 64)
 
     def result(self, invocation):
-        return {"schemaVersion": 1, "app": deploy.APP,
+        return {"schemaVersion": 1, "app": deploy.APP, "check": invocation["check"],
                 **{key: invocation[key] for key in ("sourceSha", "archiveSha256", "invocationId", "requestedAt", "expiresAt")},
                 "startedAt": 1001, "finishedAt": 1005, "state": "completed", "exitCode": 0,
                 "scope": ["Demo", "Live"]}
@@ -78,7 +78,7 @@ class SchemaResultTests(unittest.TestCase):
                    ("state", "unknown"), ("sourceSha", "c" * 40), ("archiveSha256", "d" * 64),
                    ("invocationId", "e" * 32), ("requestedAt", 999), ("expiresAt", 1300),
                    ("startedAt", 900), ("startedAt", 1007), ("finishedAt", 1200),
-                   ("scope", ["Demo"]), ("app", "another-app"), ("schemaVersion", True)]
+                   ("scope", ["Demo"]), ("check", "marker"), ("app", "another-app"), ("schemaVersion", True)]
         for key, value in changes:
             with self.subTest(key=key, value=value):
                 result = self.result(invocation)

@@ -78,7 +78,7 @@ class DeployBankingTests(unittest.TestCase):
                 return "UPLOAD\n" if len(commands) == 1 else ""
             with patch.object(deploy, "remote_command", side_effect=remote), \
                  patch.object(deploy, "request", return_value=(201, b"", {})) as upload:
-                result = deploy.stage_and_verify_pension_schema(
+                result = deploy.stage_pension_candidate(
                     "token", package, sha, manifest["archive"]["sha256"]
                 )
             self.assertEqual(result["stagedPath"], f"/home/Banking/releases/{sha}")
@@ -86,7 +86,7 @@ class DeployBankingTests(unittest.TestCase):
             self.assertEqual(upload.call_args.args[:2],
                              ("PUT", f"{deploy.SCM_URL}/api/vfs/Banking/releases/{sha}.zip"))
             self.assertIn("sha256sum -c -", commands[-1])
-            self.assertIn("dotnet Banking.Api.dll --verify-pension-schema", commands[-1])
+            self.assertNotIn("dotnet", commands[-1])
             self.assertNotIn("/home/site/wwwroot", " ".join(commands))
 
     def test_schema_preflight_reuses_exact_archive_and_rebuilds_stage(self):
@@ -98,7 +98,7 @@ class DeployBankingTests(unittest.TestCase):
                 return "REUSE\n" if len(commands) == 1 else ""
             with patch.object(deploy, "remote_command", side_effect=remote), \
                  patch.object(deploy, "request") as upload:
-                deploy.stage_and_verify_pension_schema(
+                deploy.stage_pension_candidate(
                     "token", package, sha, manifest["archive"]["sha256"]
                 )
             upload.assert_not_called()
@@ -114,7 +114,7 @@ class DeployBankingTests(unittest.TestCase):
                               side_effect=deploy.ReleaseError("archive checksum mismatch")), \
                  patch.object(deploy, "request") as upload:
                 with self.assertRaises(deploy.ReleaseError):
-                    deploy.stage_and_verify_pension_schema(
+                    deploy.stage_pension_candidate(
                         "token", package, sha, manifest["archive"]["sha256"]
                     )
             upload.assert_not_called()

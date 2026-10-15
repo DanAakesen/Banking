@@ -71,7 +71,7 @@ class ScmCommandTransportTests(unittest.TestCase):
         self.assertEqual(legacy["ExitCode"], 2)
         self.assertEqual((current["ExitCode"], current["Output"]), (0, "PROBE_OK\n"))
 
-    def test_actual_backup_reuse_and_schema_commands_execute_through_dotnet(self):
+    def test_actual_backup_reuse_and_staging_commands_execute_through_dotnet(self):
         with tempfile.TemporaryDirectory(prefix="scm-transport-") as temp:
             root = Path(temp)
             home = root / "home"
@@ -83,13 +83,7 @@ class ScmCommandTransportTests(unittest.TestCase):
             for name, content in original.items():
                 (wwwroot / name).write_bytes(content)
             package, manifest_path, manifest, sha = fixtures.DeployBankingTests().package(root)
-            bin_dir = root / "bin"
-            bin_dir.mkdir()
-            schema_probe = bin_dir / "dotnet"
-            schema_probe.write_text('#!/usr/bin/env bash\nset -e\ntest "$#" -eq 2\ntest "$1" = Banking.Api.dll\n'
-                                    'test "$2" = --verify-pension-schema\nprintf SCHEMA_FIXTURE_OK\n')
-            schema_probe.chmod(0o700)
-            env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ["PATH"])
+            env = dict(os.environ)
             calls = []
 
             def kudu(method, url, token=None, body=None, *args, **kwargs):
@@ -123,8 +117,8 @@ class ScmCommandTransportTests(unittest.TestCase):
                     self.assertEqual(snapshot["rollbackSize"], backup.stat().st_size)
                     self.assertEqual(len(snapshot["rollbackAssets"]), 4)
                 for _ in range(2):
-                    stage = deploy.stage_and_verify_pension_schema("synthetic-token", package, sha, manifest["archive"]["sha256"])
-                    self.assertTrue(stage["verified"])
+                    stage = deploy.stage_pension_candidate("synthetic-token", package, sha, manifest["archive"]["sha256"])
+                    self.assertEqual(stage["archiveSha256"], manifest["archive"]["sha256"])
                 self.assertTrue((home / f"Banking/releases/{sha}/Banking.Api.dll").exists())
             self.assertTrue(any("trap" in command and "$checkdir" in command for command in calls))
             for name, content in original.items():
