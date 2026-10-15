@@ -166,14 +166,94 @@ class DeployBankingTests(unittest.TestCase):
                  patch.object(deploy, "post_zip"), \
                  patch.object(deploy, "wait_after_publish", return_value=terminal_success), \
                  patch.object(deploy, "verify_runtime_files", return_value={}), \
+                 patch.object(deploy, "run_az", return_value="") as restart, \
                  patch.object(deploy, "verify_hosted", side_effect=deploy.ReleaseError("smoke failed")), \
                  patch.object(deploy, "latest_deployment", return_value=terminal_success), \
                  patch.object(deploy, "restore_remote_backup", return_value={"build": "old"}) as restore:
                 with self.assertRaises(deploy.ReleaseError):
                     deploy.publish(args)
             restore.assert_called_once()
+            restart.assert_called_once_with(
+                "webapp", "restart", "--subscription", deploy.SUBSCRIPTION, "--resource-group", deploy.RESOURCE_GROUP,
+                "--name", deploy.APP, "--output", "none",
+            )
             result = json.loads((evidence / "release-evidence.json").read_text())
             self.assertEqual(result["rollbackOutcome"], "succeeded")
+
+    def test_success_restarts_once_between_runtime_hashes_and_hosted_checks(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            package, manifest_path, manifest, sha = self.package(folder)
+            evidence = folder / "evidence"
+            evidence.mkdir()
+            snapshot = dict(schemaVersion=1, app=deploy.APP, resourceId=deploy.RESOURCE_ID,
+                            sourceSha=sha, releaseArchiveSha256=manifest["archive"]["sha256"],
+                            artifactDigest="digest", rollbackLocation=f"/home/Banking/releases/before-{sha}.zip",
+                            rollbackSha256="c" * 64, previousBuild="old", previousDeploymentId="before")
+            (evidence / "rollback-manifest.json").write_text(json.dumps(snapshot))
+            args = Namespace(source_sha=sha, package=str(package), manifest=str(manifest_path),
+                             artifact_digest="digest", evidence_dir=str(evidence), repo=temp)
+            baseline = ({}, {"build": "old"}, {"id": "before", "status": 4, "complete": True})
+            terminal_success = {"id": "new", "status": 4, "complete": True}
+            order = []
+            def wait_terminal(*_):
+                order.append("terminal")
+                return terminal_success
+            def verify_files(*_):
+                order.append("files")
+                return {"Banking.Api.dll": "hash"}
+            def restart(*args):
+                order.append("restart")
+                self.assertEqual(args, ("webapp", "restart", "--subscription", deploy.SUBSCRIPTION, "--resource-group", deploy.RESOURCE_GROUP,
+                                        "--name", deploy.APP, "--output", "none"))
+            def hosted(*_args, **_kwargs):
+                order.append("hosted")
+                return {"health": "running", "build": manifest["build"]}
+            with patch.object(deploy, "verify_azure_context"), \
+                 patch.object(deploy, "read_hosted_baseline", return_value=baseline), \
+                 patch.object(deploy, "access_token", return_value="token"), \
+                 patch.object(deploy, "remote_command", return_value=""), \
+                 patch.object(deploy, "post_zip"), \
+                 patch.object(deploy, "wait_after_publish", side_effect=wait_terminal), \
+                 patch.object(deploy, "verify_runtime_files", side_effect=verify_files), \
+                 patch.object(deploy, "run_az", side_effect=restart) as restart_mock, \
+                 patch.object(deploy, "verify_hosted", side_effect=hosted):
+                result = deploy.publish(args)
+            self.assertEqual(order, ["terminal", "files", "restart", "hosted"])
+            restart_mock.assert_called_once()
+            self.assertTrue(result["controlledRestartIssued"])
+
+    def test_runtime_hash_failure_does_not_restart_and_uses_terminal_rollback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            package, manifest_path, manifest, sha = self.package(folder)
+            evidence = folder / "evidence"
+            evidence.mkdir()
+            snapshot = dict(schemaVersion=1, app=deploy.APP, resourceId=deploy.RESOURCE_ID,
+                            sourceSha=sha, releaseArchiveSha256=manifest["archive"]["sha256"],
+                            artifactDigest="digest", rollbackLocation=f"/home/Banking/releases/before-{sha}.zip",
+                            rollbackSha256="c" * 64, previousBuild="old", previousDeploymentId="before")
+            (evidence / "rollback-manifest.json").write_text(json.dumps(snapshot))
+            args = Namespace(source_sha=sha, package=str(package), manifest=str(manifest_path),
+                             artifact_digest="digest", evidence_dir=str(evidence), repo=temp)
+            baseline = ({}, {"build": "old"}, {"id": "before", "status": 4, "complete": True})
+            terminal_success = {"id": "new", "status": 4, "complete": True}
+            with patch.object(deploy, "verify_azure_context"), \
+                 patch.object(deploy, "read_hosted_baseline", return_value=baseline), \
+                 patch.object(deploy, "access_token", return_value="token"), \
+                 patch.object(deploy, "remote_command", return_value=""), \
+                 patch.object(deploy, "post_zip"), \
+                 patch.object(deploy, "wait_after_publish", return_value=terminal_success), \
+                 patch.object(deploy, "verify_runtime_files", side_effect=deploy.ReleaseError("hash mismatch")), \
+                 patch.object(deploy, "run_az") as restart, \
+                 patch.object(deploy, "latest_deployment", return_value=terminal_success), \
+                 patch.object(deploy, "restore_remote_backup", return_value={"build": "old"}) as restore:
+                with self.assertRaises(deploy.ReleaseError):
+                    deploy.publish(args)
+            restart.assert_not_called()
+            restore.assert_called_once()
+            result = json.loads((evidence / "release-evidence.json").read_text())
+            self.assertFalse(result["controlledRestartIssued"])
 
     def test_hosted_readiness_retries_until_expected_build(self):
         asset_names = ("index.html", "app.js", "styles.css", "saxo-session.js")
