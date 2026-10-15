@@ -18,7 +18,7 @@ See [repair and verification](demo-repair-2026-10-15.md). The authorized synthet
 
 ## Presentation readiness — 12 October 2026
 
-Dan presents Demo on **22 October 2026**. Use [presentation readiness](presentation-readiness.md) for the core journey checklist, current Demo/Dan/deployed status, advisor data-access audit, pension upload scope, performance measurements and acceptance gaps. PFA automatic/API integration is parked; reuse the existing PensionsInfo JSON/manual statement workflow. No real PFA file/format is available and no PDF parsing is claimed. Banking Main coordinates the fresh published Banking cloud task; Jarvis is a separate project/environment. Implementation and validated merging are authorized; production deployment remains separate.
+Dan presents Demo on **22 October 2026**. Use [presentation readiness](presentation-readiness.md) for the core journey checklist, current Demo/Dan/deployed status, advisor data-access audit, pension upload scope, performance measurements and acceptance gaps. PFA automatic/API integration remains parked. Dan authorized PDF upload/review/save and retention of every report/version on 15 October; follow [pension report/history implementation and schema gate](pensionsinfo-import.md). The actual private report remains with Main for owner-only deployed preview acceptance. Synthetic fixtures are the only repository test data. Banking Main coordinates the fresh published Banking cloud task; Jarvis is a separate project/environment. Implementation, validated merging and continuous publishing within the authorized scope are approved; the pension additive migration is a separate controlled operator prerequisite before code publication.
 
 ## Standing commit/push/merge workflow — confirmed 1 October 2026
 

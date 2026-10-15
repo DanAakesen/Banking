@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 import json
+import shlex
 from types import SimpleNamespace
 import tempfile
 import unittest
@@ -55,6 +56,56 @@ class DeployBankingTests(unittest.TestCase):
             with self.assertRaises(deploy.ReleaseError):
                 deploy.verify_manifest(archive, manifest_path, sha)
 
+    def test_schema_preflight_uploads_verified_archive_only_outside_wwwroot(self):
+        with tempfile.TemporaryDirectory() as temp:
+            package, _, manifest, sha = self.package(Path(temp))
+            commands = []
+            def remote(_token, command):
+                commands.append(command)
+                return "UPLOAD\n" if len(commands) == 1 else ""
+            with patch.object(deploy, "remote_command", side_effect=remote), \
+                 patch.object(deploy, "request", return_value=(201, b"", {})) as upload:
+                result = deploy.stage_and_verify_pension_schema(
+                    "token", package, sha, manifest["archive"]["sha256"]
+                )
+            self.assertEqual(result["stagedPath"], f"/home/Banking/releases/{sha}")
+            upload.assert_called_once()
+            self.assertEqual(upload.call_args.args[:2],
+                             ("PUT", f"{deploy.SCM_URL}/api/vfs/Banking/releases/{sha}.zip"))
+            self.assertIn("sha256sum -c -", commands[-1])
+            self.assertIn("dotnet Banking.Api.dll --verify-pension-schema", commands[-1])
+            self.assertNotIn("/home/site/wwwroot", " ".join(commands))
+
+    def test_schema_preflight_reuses_exact_archive_and_rebuilds_stage(self):
+        with tempfile.TemporaryDirectory() as temp:
+            package, _, manifest, sha = self.package(Path(temp))
+            commands = []
+            def remote(_token, command):
+                commands.append(command)
+                return "REUSE\n" if len(commands) == 1 else ""
+            with patch.object(deploy, "remote_command", side_effect=remote), \
+                 patch.object(deploy, "request") as upload:
+                deploy.stage_and_verify_pension_schema(
+                    "token", package, sha, manifest["archive"]["sha256"]
+                )
+            upload.assert_not_called()
+            self.assertIn(manifest["archive"]["sha256"], commands[0])
+            self.assertIn("sha256sum -c -", commands[0])
+            self.assertIn("rm -rf -- /home/Banking/releases/" + sha, commands[-1])
+            self.assertIn("unzip -oq /home/Banking/releases/" + sha + ".zip", commands[-1])
+
+    def test_schema_preflight_refuses_different_existing_archive(self):
+        with tempfile.TemporaryDirectory() as temp:
+            package, _, manifest, sha = self.package(Path(temp))
+            with patch.object(deploy, "remote_command",
+                              side_effect=deploy.ReleaseError("archive checksum mismatch")), \
+                 patch.object(deploy, "request") as upload:
+                with self.assertRaises(deploy.ReleaseError):
+                    deploy.stage_and_verify_pension_schema(
+                        "token", package, sha, manifest["archive"]["sha256"]
+                    )
+            upload.assert_not_called()
+
     def test_rollback_requires_new_terminal_deployment(self):
         self.assertFalse(deploy.rollback_is_safe("old", None))
         self.assertFalse(deploy.rollback_is_safe("old", {"id": "new", "complete": False}))
@@ -69,6 +120,14 @@ class DeployBankingTests(unittest.TestCase):
         with patch.object(deploy.urllib.request.OpenerDirector, "open", side_effect=error):
             status, body, _ = deploy.request("GET", deploy.APP_URL + "/api/accounts", allow_http_error=True)
         self.assertEqual((status, body), (401, b""))
+
+    def test_remote_shell_command_preserves_inner_variables_and_quotes(self):
+        with patch.object(deploy, "request", return_value=(200, json.dumps(
+                {"ExitCode": 0, "Output": "ok"}).encode(), {})) as mocked:
+            self.assertEqual(deploy.remote_command("token", 'printf "%s\\n" "$checkdir"'), "ok")
+        payload = json.loads(mocked.call_args.args[3])
+        self.assertEqual(shlex.split(payload["command"]),
+                         ["bash", "-c", 'printf "%s\\n" "$checkdir"'])
 
     def test_redirects_are_not_followed_and_hosts_are_fixed(self):
         redirect = urllib.error.HTTPError("url", 302, "redirect", {"Location": "https://attacker.invalid/"}, None)
@@ -96,6 +155,9 @@ class DeployBankingTests(unittest.TestCase):
                  patch.object(deploy, "access_token", return_value="token"), \
                  patch.object(deploy, "remote_command", side_effect=command_results) as remote:
                 snapshot = deploy.capture(capture_args)
+            capture_command = remote.call_args_list[0].args[1]
+            self.assertIn("if test -e " + snapshot["rollbackLocation"], capture_command)
+            self.assertIn("diff -qr /home/site/wwwroot", capture_command)
             self.assertTrue(any('wwwroot/index.html' in call.args[1] for call in remote.call_args_list))
             self.assertEqual(snapshot["rollbackSha256"], backup_digest)
             publish_args = Namespace(source_sha=sha, package=str(package), manifest=str(manifest_path),
@@ -106,6 +168,7 @@ class DeployBankingTests(unittest.TestCase):
                  patch.object(deploy, "read_hosted_baseline", return_value=({}, previous_runtime, previous_deployment)), \
                  patch.object(deploy, "access_token", return_value="token"), \
                  patch.object(deploy, "remote_command", return_value=""), \
+                 patch.object(deploy, "stage_and_verify_pension_schema", return_value={"verified": True}), \
                  patch.object(deploy, "post_zip"), \
                  patch.object(deploy, "wait_after_publish", return_value=failed), \
                  patch.object(deploy, "latest_deployment", return_value=failed), \
@@ -136,6 +199,7 @@ class DeployBankingTests(unittest.TestCase):
                      patch.object(deploy, "read_hosted_baseline", return_value=baseline), \
                      patch.object(deploy, "access_token", return_value="token"), \
                      patch.object(deploy, "remote_command", return_value=""), \
+                     patch.object(deploy, "stage_and_verify_pension_schema", return_value={"verified": True}), \
                      patch.object(deploy, "post_zip"), \
                      patch.object(deploy, "wait_after_publish", side_effect=deploy.ReleaseError("state unknown")), \
                      patch.object(deploy, "latest_deployment", return_value=latest), \
@@ -163,6 +227,7 @@ class DeployBankingTests(unittest.TestCase):
                  patch.object(deploy, "read_hosted_baseline", return_value=baseline), \
                  patch.object(deploy, "access_token", return_value="token"), \
                  patch.object(deploy, "remote_command", return_value=""), \
+                 patch.object(deploy, "stage_and_verify_pension_schema", return_value={"verified": True}), \
                  patch.object(deploy, "post_zip"), \
                  patch.object(deploy, "wait_after_publish", return_value=terminal_success), \
                  patch.object(deploy, "verify_runtime_files", return_value={}), \
@@ -174,7 +239,7 @@ class DeployBankingTests(unittest.TestCase):
                     deploy.publish(args)
             restore.assert_called_once()
             restart.assert_called_once_with(
-                "webapp", "restart", "--subscription", deploy.SUBSCRIPTION, "--resource-group", deploy.RESOURCE_GROUP,
+                "webapp", "restart", "--resource-group", deploy.RESOURCE_GROUP,
                 "--name", deploy.APP, "--output", "none",
             )
             result = json.loads((evidence / "release-evidence.json").read_text())
@@ -196,6 +261,11 @@ class DeployBankingTests(unittest.TestCase):
             baseline = ({}, {"build": "old"}, {"id": "before", "status": 4, "complete": True})
             terminal_success = {"id": "new", "status": 4, "complete": True}
             order = []
+            def schema_gate(*_):
+                order.append("schema")
+                return {"verified": True}
+            def upload(*_):
+                order.append("zip")
             def wait_terminal(*_):
                 order.append("terminal")
                 return terminal_success
@@ -204,7 +274,7 @@ class DeployBankingTests(unittest.TestCase):
                 return {"Banking.Api.dll": "hash"}
             def restart(*args):
                 order.append("restart")
-                self.assertEqual(args, ("webapp", "restart", "--subscription", deploy.SUBSCRIPTION, "--resource-group", deploy.RESOURCE_GROUP,
+                self.assertEqual(args, ("webapp", "restart", "--resource-group", deploy.RESOURCE_GROUP,
                                         "--name", deploy.APP, "--output", "none"))
             def hosted(*_args, **_kwargs):
                 order.append("hosted")
@@ -213,15 +283,52 @@ class DeployBankingTests(unittest.TestCase):
                  patch.object(deploy, "read_hosted_baseline", return_value=baseline), \
                  patch.object(deploy, "access_token", return_value="token"), \
                  patch.object(deploy, "remote_command", return_value=""), \
-                 patch.object(deploy, "post_zip"), \
+                 patch.object(deploy, "stage_and_verify_pension_schema", side_effect=schema_gate), \
+                 patch.object(deploy, "post_zip", side_effect=upload), \
                  patch.object(deploy, "wait_after_publish", side_effect=wait_terminal), \
                  patch.object(deploy, "verify_runtime_files", side_effect=verify_files), \
                  patch.object(deploy, "run_az", side_effect=restart) as restart_mock, \
                  patch.object(deploy, "verify_hosted", side_effect=hosted):
                 result = deploy.publish(args)
-            self.assertEqual(order, ["terminal", "files", "restart", "hosted"])
+            self.assertEqual(order, ["schema", "zip", "terminal", "files", "restart", "hosted"])
             restart_mock.assert_called_once()
             self.assertTrue(result["controlledRestartIssued"])
+            self.assertTrue(result["pensionSchemaVerified"])
+
+    def test_missing_pension_schema_gate_blocks_live_upload_and_restart(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            package, manifest_path, manifest, sha = self.package(folder)
+            evidence = folder / "evidence"
+            evidence.mkdir()
+            snapshot = dict(schemaVersion=1, app=deploy.APP, resourceId=deploy.RESOURCE_ID,
+                            sourceSha=sha, releaseArchiveSha256=manifest["archive"]["sha256"],
+                            artifactDigest="digest", rollbackLocation=f"/home/Banking/releases/before-{sha}.zip",
+                            rollbackSha256="c" * 64, previousBuild="old", previousDeploymentId="before")
+            (evidence / "rollback-manifest.json").write_text(json.dumps(snapshot))
+            args = Namespace(source_sha=sha, package=str(package), manifest=str(manifest_path),
+                             artifact_digest="digest", evidence_dir=str(evidence), repo=temp)
+            baseline = ({}, {"build": "old"}, {"id": "before", "status": 4, "complete": True})
+            with patch.object(deploy, "verify_azure_context"), \
+                 patch.object(deploy, "read_hosted_baseline", return_value=baseline), \
+                 patch.object(deploy, "access_token", return_value="token"), \
+                 patch.object(deploy, "remote_command", return_value=""), \
+                 patch.object(deploy, "stage_and_verify_pension_schema",
+                              side_effect=deploy.ReleaseError("required schema missing")), \
+                 patch.object(deploy, "post_zip") as live_upload, \
+                 patch.object(deploy, "latest_deployment") as latest, \
+                 patch.object(deploy, "run_az") as restart, \
+                 patch.object(deploy, "restore_remote_backup") as rollback:
+                with self.assertRaises(deploy.ReleaseError):
+                    deploy.publish(args)
+            live_upload.assert_not_called()
+            latest.assert_not_called()
+            restart.assert_not_called()
+            rollback.assert_not_called()
+            result = json.loads((evidence / "release-evidence.json").read_text())
+            self.assertFalse(result["pensionSchemaVerified"])
+            self.assertFalse(result["controlledRestartIssued"])
+            self.assertFalse(result["rollbackAttempted"])
 
     def test_runtime_hash_failure_does_not_restart_and_uses_terminal_rollback(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -242,6 +349,7 @@ class DeployBankingTests(unittest.TestCase):
                  patch.object(deploy, "read_hosted_baseline", return_value=baseline), \
                  patch.object(deploy, "access_token", return_value="token"), \
                  patch.object(deploy, "remote_command", return_value=""), \
+                 patch.object(deploy, "stage_and_verify_pension_schema", return_value={"verified": True}), \
                  patch.object(deploy, "post_zip"), \
                  patch.object(deploy, "wait_after_publish", return_value=terminal_success), \
                  patch.object(deploy, "verify_runtime_files", side_effect=deploy.ReleaseError("hash mismatch")), \

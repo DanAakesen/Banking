@@ -15,11 +15,12 @@ public sealed class WealthRecord : Entity
     public string SourceNote { get; set; } = "";
     public decimal? AnnualPension { get; set; }
     public int? RetirementAge { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public string? PensionSourceKey { get; set; }
 }
 public sealed record WealthInput(string Name, string Provider, string Kind, decimal Value, string Currency, DateOnly AsOf,
     string SourceNote, decimal? AnnualPension = null, int? RetirementAge = null, string? Version = null);
 
-public sealed class WealthService(BankingDb db, TimeProvider clock, Workspace workspace)
+public sealed class WealthService(BankingDb db, TimeProvider clock, Workspace workspace, PensionImportService pensionHistory)
 {
     public Task<WealthRecord[]> List(CancellationToken ct)=>db.WealthRecords.AsNoTracking().OrderBy(x=>x.Name).Take(100).ToArrayAsync(ct);
     public async Task<object> Overview(string currency, CancellationToken ct)
@@ -47,10 +48,10 @@ public sealed class WealthService(BankingDb db, TimeProvider clock, Workspace wo
                 [1.18m,1.08m,1.12m,1.02m,.98m,1.04m,.91m,.93m,.88m,.96m,.95m,1m]
             },
             investment = new { history, changePercent = investments.Length > 0 && value > 0 ? (decimal?)6.8m : null },
-            pension = pensions.Length > 0 ? new { contributions, returns = pension - contributions } : null,
+            pension = pensions.Length > 0 && !await db.PensionSnapshots.AnyAsync(ct) ? new { contributions, returns = pension - contributions } : null,
             basis = "Fictional Demo history and pension breakdown, reconciled to current Demo statements. Not provider-supplied performance." } };
     }
-    public async Task<WealthRecord> Save(Guid? id,WealthInput input,CancellationToken ct)
+    public static void Validate(WealthInput input, TimeProvider clock)
     {
         Check.Text(input.Name,120);Check.Text(input.Provider,120);Check.Text(input.SourceNote,500);Check.Currency(input.Currency);
         Check.That(input.Kind is "Investment" or "Pension","INVALID_WEALTH_KIND");
@@ -60,6 +61,11 @@ public sealed class WealthService(BankingDb db, TimeProvider clock, Workspace wo
         Check.That(input.RetirementAge is null or >=40 and <=100,"INVALID_RETIREMENT_AGE");
         Check.That(input.Kind=="Pension"||input.AnnualPension is null&&input.RetirementAge is null,"INVALID_INVESTMENT_PROJECTION");
         Check.That(input.AnnualPension.HasValue==input.RetirementAge.HasValue,"INCOMPLETE_PENSION_PROJECTION");
+    }
+    public async Task<WealthRecord> Save(Guid? id,WealthInput input,CancellationToken ct)
+    {
+        Validate(input, clock);
+        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
         var row=id.HasValue?await db.WealthRecords.SingleOrDefaultAsync(x=>x.Id==id,ct)??throw new ApiFailure(404,"VALUATION_NOT_FOUND"):new WealthRecord();
         // One current snapshot per named product, updated in place rather than summed across dates.
         if(await db.WealthRecords.AnyAsync(x=>x.Provider==input.Provider.Trim()&&x.Name==input.Name.Trim()&&x.Kind==input.Kind&&x.Id!=row.Id,ct))
@@ -67,7 +73,8 @@ public sealed class WealthService(BankingDb db, TimeProvider clock, Workspace wo
         if(id.HasValue)GoalService.Version(db,row,input.Version);else{Check.That(await db.WealthRecords.CountAsync(ct)<100,"VALUATION_LIMIT");db.WealthRecords.Add(row);}
         row.Name=input.Name.Trim();row.Provider=input.Provider.Trim();row.Kind=input.Kind;row.Value=input.Value;row.Currency=input.Currency;
         row.AsOf=input.AsOf;row.SourceNote=input.SourceNote.Trim();row.AnnualPension=input.AnnualPension;row.RetirementAge=input.RetirementAge;
-        await db.SaveChangesAsync(ct);return row;
+        if (row.Kind == "Pension") await pensionHistory.RecordManual(row, ct);
+        await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);return row;
     }
     public async Task Delete(Guid id,string version,CancellationToken ct)
     {

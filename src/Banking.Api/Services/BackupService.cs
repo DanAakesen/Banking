@@ -5,16 +5,28 @@ using Banking.Api.Data;
 using Banking.Api.Security;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
+using System.Text.Json.Serialization.Metadata;
 
 namespace Banking.Api.Services;
 
 // Local recovery archive, encrypted to this Windows user and Data Protection key ring.
 // Not a portable/off-device disaster recovery format. No HTTP export endpoint.
-public sealed class BackupService(BankingDb db, Vault vault, Workspace workspace)
+public sealed class BackupService(BankingDb db, Vault vault, Workspace workspace, IDataProtectionProvider protection)
 {
-    private static readonly JsonSerializerOptions Json = new() { ReferenceHandler = ReferenceHandler.IgnoreCycles };
+    private static readonly JsonSerializerOptions Json = new() { ReferenceHandler = ReferenceHandler.IgnoreCycles,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { info => {
+            if (info.Type == typeof(WealthRecord)) {
+                var property = info.CreateJsonPropertyInfo(typeof(string), nameof(WealthRecord.PensionSourceKey));
+                property.Get = row => ((WealthRecord)row).PensionSourceKey;
+                property.Set = (row, value) => ((WealthRecord)row).PensionSourceKey = (string?)value;
+                info.Properties.Remove(info.Properties.First(p => p.Name == nameof(WealthRecord.PensionSourceKey)));
+                info.Properties.Add(property);
+            }
+        } } } };
+    IDataProtector PensionProtection => protection.CreateProtector("Banking.Pension.Original.v1", workspace.Mode, workspace.DemoScope);
     private static readonly Type[] Types = [typeof(Connection), typeof(Account), typeof(Category), typeof(CategoryRule), typeof(Budget),
-        typeof(BankTransaction), typeof(BalanceSnapshot), typeof(ClassificationChange), typeof(TransferMatch), typeof(SyncJob), typeof(ImportItem), typeof(AccountAlias), typeof(Goal), typeof(ReviewAction), typeof(BudgetPlan), typeof(BudgetEntry), typeof(LoanRecord), typeof(WealthRecord), typeof(ResearchItem)];
+        typeof(BankTransaction), typeof(BalanceSnapshot), typeof(ClassificationChange), typeof(TransferMatch), typeof(SyncJob), typeof(ImportItem), typeof(AccountAlias), typeof(Goal), typeof(ReviewAction), typeof(BudgetPlan), typeof(BudgetEntry), typeof(LoanRecord), typeof(WealthRecord), typeof(ResearchItem), typeof(PensionDocument), typeof(PensionUpload), typeof(PensionSnapshot)];
     public async Task Export(string file, CancellationToken ct, string? passphrase = null)
     {
         if (File.Exists(file)) throw new ApiFailure(409, "BACKUP_ALREADY_EXISTS");
@@ -33,6 +45,8 @@ public sealed class BackupService(BankingDb db, Vault vault, Workspace workspace
                         // A portable recovery restores financial history, not reusable bank credentials or stale authorizations.
                         if (record is Connection connection) { connection.Session = ""; connection.Status = "ReconnectRequired"; connection.RetryNotBefore = null; }
                         if (record is Account account) { account.ProviderAccountId = ""; account.Accessible = false; }
+                        // Outer portable archive encrypts these bytes; re-protect with destination keys on restore.
+                        if (record is PensionDocument document) document.ProtectedOriginal = PensionProtection.Unprotect(document.ProtectedOriginal);
                         if (record is SyncJob job)
                         {
                             job.Cursor = null;
@@ -71,6 +85,9 @@ public sealed class BackupService(BankingDb db, Vault vault, Workspace workspace
         archive.Tables.TryAdd(nameof(LoanRecord), JsonSerializer.SerializeToElement(Array.Empty<LoanRecord>(), Json));
         archive.Tables.TryAdd(nameof(WealthRecord), JsonSerializer.SerializeToElement(Array.Empty<WealthRecord>(), Json));
         archive.Tables.TryAdd(nameof(ResearchItem), JsonSerializer.SerializeToElement(Array.Empty<ResearchItem>(), Json));
+        archive.Tables.TryAdd(nameof(PensionDocument), JsonSerializer.SerializeToElement(Array.Empty<PensionDocument>(), Json));
+        archive.Tables.TryAdd(nameof(PensionUpload), JsonSerializer.SerializeToElement(Array.Empty<PensionUpload>(), Json));
+        archive.Tables.TryAdd(nameof(PensionSnapshot), JsonSerializer.SerializeToElement(Array.Empty<PensionSnapshot>(), Json));
         Check.That(archive.Tables.Count == Types.Length, "UNSUPPORTED_ARCHIVE");
         Check.That(archive.Mode == workspace.Mode && archive.Portable == (passphrase is not null), "ARCHIVE_MODE_MISMATCH");
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
@@ -86,6 +103,7 @@ public sealed class BackupService(BankingDb db, Vault vault, Workspace workspace
             foreach (Entity record in records)
             {
                 record.Version = [];
+                if (passphrase is not null && record is PensionDocument document) document.ProtectedOriginal = PensionProtection.Protect(document.ProtectedOriginal);
                 if (record is SyncJob { Status: "Running" } job) job.Status = "Queued";
                 db.Add(record);
             }

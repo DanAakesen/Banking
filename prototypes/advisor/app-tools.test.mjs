@@ -16,7 +16,7 @@ test('app tools load frontend assets from an isolated deployed asset root',async
  try{
   await Promise.all([mkdir(packageRoot,{recursive:true}),mkdir(assetRoot,{recursive:true})]);
   await Promise.all(['app-tools.mjs','saxo-tools.mjs','banking-context.mjs'].map(name=>copyFile(path.join(sourceRoot,name),path.join(packageRoot,name))));
-  await Promise.all(['overview.js','budget-ui.js','wealth-ui.js','saxo-session.js'].map(name=>copyFile(path.join(sourceRoot,'../../src/Banking.Api/wwwroot',name),path.join(assetRoot,name))));
+  await Promise.all(['overview.js','budget-ui.js','wealth-ui.js','pension-import-ui.js','saxo-session.js'].map(name=>copyFile(path.join(sourceRoot,'../../src/Banking.Api/wwwroot',name),path.join(assetRoot,name))));
   await writeFile(path.join(releaseRoot,'package.json'),'{"type":"module"}');
   const script=[
    "import assert from 'node:assert/strict';",
