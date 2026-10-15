@@ -1,0 +1,256 @@
+name: Banking release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full SHA of the current main commit to package
+        required: true
+        type: string
+      confirm_deploy:
+        description: Enter DEPLOY to publish this reviewed main release
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-package:
+    if: github.repository == 'DanAakesen/Banking' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - name: Check out the requested main commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.sha }}
+
+      - name: Require the exact current main commit
+        id: source
+        shell: bash
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          REQUESTED_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$REQUESTED_SHA" == "$EVENT_SHA" ]]
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          [[ "$(git rev-parse refs/remotes/origin/main)" == "$REQUESTED_SHA" ]]
+          echo "sha=$REQUESTED_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: 10.0.401
+
+      - name: Install Node.js 24.19.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.19.0
+
+      - name: Restore the API for the Linux release target
+        run: dotnet restore src/Banking.Api/Banking.Api.csproj --runtime linux-x64 --locked-mode
+
+      - name: Run isolated backend tests
+        run: |
+          dotnet restore tests/Banking.Tests/Banking.Tests.csproj --no-dependencies --locked-mode
+          dotnet test tests/Banking.Tests/Banking.Tests.csproj --configuration Release --no-restore --filter "FullyQualifiedName~AnnotationSecurityTests|FullyQualifiedName~PensionStatementTests|FullyQualifiedName~SaxoMarketDataTests|FullyQualifiedName~SaxoPortfolioTests|FullyQualifiedName~SaxoReadinessTests|FullyQualifiedName~LocalAdvisorTests"
+
+      - name: Run frontend host tests
+        run: |
+          dotnet restore tools/frontend-host/tests/FrontendHost.Tests/FrontendHost.Tests.csproj --locked-mode
+          dotnet test tools/frontend-host/tests/FrontendHost.Tests/FrontendHost.Tests.csproj --configuration Release --no-restore
+
+      - name: Run frontend and advisor Node tests
+        run: node --test --test-concurrency=1 tests/ui/*.test.mjs prototypes/advisor/*.test.mjs
+
+      - name: Run isolated Python protocol tests
+        run: python3 -m unittest discover -s tests/scripts -p 'test_*.py'
+
+      - name: Build the immutable Linux release package
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/banking-release/$SOURCE_SHA"
+          mkdir -p "$(dirname "$output")"
+          python3 scripts/prepare-cloud-release.py \
+            --sha "$SOURCE_SHA" \
+            --output "$output" \
+            --node-version 24.19.0
+          (cd "$output" && sha256sum -c checksums.txt)
+          python3 - "$output/manifest.json" "$SOURCE_SHA" <<'PY'
+          import json, pathlib, sys
+          manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          assert manifest["schemaVersion"] == 1
+          assert manifest["sourceSha"] == sys.argv[2]
+          assert manifest["build"] == "git-" + sys.argv[2]
+          assert manifest["nodeVersion"] == "24.19.0"
+          assert manifest["archive"]["name"] == "banking-release.zip"
+          PY
+
+      - name: Upload immutable release package
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: banking-release-${{ steps.source.outputs.sha }}
+          path: ${{ runner.temp }}/banking-release/${{ steps.source.outputs.sha }}
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  deploy:
+    needs: validate-and-package
+    if: >-
+      needs.validate-and-package.result == 'success' &&
+      vars.BANKING_AZURE_DEPLOY_ENABLED == 'true' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+       (github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/main' && inputs.confirm_deploy == 'DEPLOY'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    concurrency:
+      group: banking-azure-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    outputs:
+      release_sha: ${{ needs.validate-and-package.outputs.source_sha }}
+    steps:
+      - name: Check out the exact release source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.validate-and-package.outputs.source_sha }}
+
+      - name: Check fixed Azure target and activation settings
+        shell: bash
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          DEPLOY_ENABLED: ${{ vars.BANKING_AZURE_DEPLOY_ENABLED }}
+          SOURCE_SHA: ${{ needs.validate-and-package.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$DEPLOY_ENABLED" == "true" ]]
+          [[ "$AZURE_CLIENT_ID" == "7dad5d82-6946-4be4-bcbc-fd446cab1e55" ]]
+          [[ "$AZURE_TENANT_ID" == "802efa29-17f2-4a79-8f5f-38f087aed96a" ]]
+          [[ "$AZURE_SUBSCRIPTION_ID" == "0ac7d719-89bc-4100-be87-a79d33e953a7" ]]
+          [[ "$AZURE_WEBAPP_NAME" == "banking-dan-0ac7d719" ]]
+          [[ "$AZURE_RESOURCE_GROUP" == "rg-banking-prod-weu" ]]
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          [[ "$(git rev-parse refs/remotes/origin/main)" == "$SOURCE_SHA" ]]
+
+      - name: Authenticate to Azure with GitHub OIDC
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Download the immutable artifact and enforce its GitHub digest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ needs.validate-and-package.outputs.artifact_id }}
+          ARTIFACT_DIGEST: ${{ needs.validate-and-package.outputs.artifact_digest }}
+        run: |
+          set -euo pipefail
+          [[ "$ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          [[ "$ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+          artifact_zip="$RUNNER_TEMP/banking-artifact.zip"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > "$artifact_zip"
+          python3 - "$artifact_zip" "$RUNNER_TEMP/banking-release" "$ARTIFACT_DIGEST" <<'PYTHON'
+          import hashlib, pathlib, sys, zipfile
+          archive, output = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+          with archive.open('rb') as stream:
+              if hashlib.file_digest(stream, 'sha256').hexdigest() != sys.argv[3]:
+                  raise RuntimeError('GitHub artifact digest mismatch')
+          output.mkdir()
+          with zipfile.ZipFile(archive) as package:
+              expected = {'banking-release.zip', 'manifest.json', 'checksums.txt'}
+              if set(package.namelist()) != expected or len(package.namelist()) != len(expected):
+                  raise RuntimeError('Unexpected artifact files')
+              for name in expected:
+                  entry = package.getinfo(name)
+                  if entry.file_size > 256 * 1024 * 1024:
+                      raise RuntimeError('Artifact file exceeded size limit')
+                  with package.open(entry) as source, (output / name).open('wb') as target:
+                      import shutil
+                      shutil.copyfileobj(source, target)
+          PYTHON
+
+      - name: Verify release artifact identity and digest
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.validate-and-package.outputs.source_sha }}
+          ARTIFACT_DIGEST: ${{ needs.validate-and-package.outputs.artifact_digest }}
+        run: |
+          set -euo pipefail
+          [[ -n "$ARTIFACT_DIGEST" ]]
+          package_dir="$RUNNER_TEMP/banking-release"
+          (cd "$package_dir" && sha256sum -c checksums.txt)
+          python3 - "$package_dir/manifest.json" "$package_dir/banking-release.zip" "$SOURCE_SHA" <<'PY'
+          import hashlib, json, pathlib, sys
+          manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          archive = pathlib.Path(sys.argv[2])
+          assert manifest["sourceSha"] == sys.argv[3]
+          assert manifest["build"] == "git-" + sys.argv[3]
+          assert manifest["archive"]["sha256"] == hashlib.sha256(archive.read_bytes()).hexdigest()
+          PY
+
+      - name: Capture code-only rollback evidence on Azure
+        id: capture
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.validate-and-package.outputs.source_sha }}
+          ARTIFACT_DIGEST: ${{ needs.validate-and-package.outputs.artifact_digest }}
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy-banking.py capture \
+            --source-sha "$SOURCE_SHA" \
+            --package "$RUNNER_TEMP/banking-release/banking-release.zip" \
+            --manifest "$RUNNER_TEMP/banking-release/manifest.json" \
+            --artifact-digest "$ARTIFACT_DIGEST" \
+            --evidence-dir "$RUNNER_TEMP/banking-evidence"
+
+      - name: Publish, verify terminal status, then verify hosted build and security
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.validate-and-package.outputs.source_sha }}
+          ARTIFACT_DIGEST: ${{ needs.validate-and-package.outputs.artifact_digest }}
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy-banking.py publish \
+            --source-sha "$SOURCE_SHA" \
+            --package "$RUNNER_TEMP/banking-release/banking-release.zip" \
+            --manifest "$RUNNER_TEMP/banking-release/manifest.json" \
+            --artifact-digest "$ARTIFACT_DIGEST" \
+            --evidence-dir "$RUNNER_TEMP/banking-evidence" \
+            --repo .
+
+      - name: Upload sanitized release and rollback evidence
+        if: always() && steps.capture.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: banking-release-evidence-${{ needs.validate-and-package.outputs.source_sha }}
+          path: ${{ runner.temp }}/banking-evidence/*.json
+          if-no-files-found: warn
+          retention-days: 30
