@@ -8,6 +8,8 @@ using Banking.Api.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Banking.Api.Services;
 
@@ -21,20 +23,45 @@ public static class CloudImport
     public static async Task Schema(IServiceProvider services, IConfiguration config)
     {
         const string tokenFile = "/home/Banking/deployment/operator.protected";
-        var protector=services.GetRequiredService<IDataProtectionProvider>().CreateProtector("Banking.Cloud.Migration.v1");
-        var token=protector.Unprotect(await File.ReadAllTextAsync(tokenFile));
+        await Schema(services, tokenFile,
+            async (token, mode) => {
+                await using var db = SchemaDatabase(config, mode, token);
+                return (await db.Database.GetPendingMigrationsAsync()).ToArray();
+            },
+            async (token, mode) => {
+                await using var db = SchemaDatabase(config, mode, token);
+                await db.GetService<IMigrator>().MigrateAsync(PensionSchemaGate.Migration);
+            });
+    }
+
+    // Test seams stay internal; production targets, credentials and allowed migration are fixed above.
+    internal static async Task Schema(IServiceProvider services, string tokenFile,
+        Func<string, string, Task<string[]>> pendingMigrations, Func<string, string, Task> applyMigration)
+    {
         try {
-            foreach(var mode in new[]{"Demo","Live"}) {
-                var raw=CloudHosting.ValidateConnection(config.GetConnectionString(mode=="Demo"?"Banking":"BankingLive")!,mode);
-                var cs=new SqlConnectionStringBuilder(raw){Authentication=SqlAuthenticationMethod.NotSpecified};
-                await using var sql=new SqlConnection(cs.ConnectionString){AccessToken=token};
-                var workspace=new Workspace();workspace.Select(mode);
-                await using var db=new BankingDb(new DbContextOptionsBuilder<BankingDb>().UseSqlServer(sql).Options,workspace);
-                var pending=(await db.Database.GetPendingMigrationsAsync()).Count();
-                await db.Database.MigrateAsync();
-                Console.WriteLine(mode+": applied "+pending+" schema migrations; existing records preserved.");
+            var protector=services.GetRequiredService<IDataProtectionProvider>().CreateProtector("Banking.Cloud.Migration.v1");
+            var token=protector.Unprotect(await File.ReadAllTextAsync(tokenFile));
+            var plan = new List<(string Mode, string[] Pending)>();
+            foreach (var mode in new[] { "Demo", "Live" })
+                plan.Add((mode, await pendingMigrations(token, mode)));
+            if (plan.Any(target => target.Pending.Length != 0 &&
+                (target.Pending.Length != 1 || target.Pending[0] != PensionSchemaGate.Migration)))
+                throw new InvalidOperationException("Unexpected pending schema migration; neither database was changed.");
+            foreach (var target in plan) {
+                if (target.Pending.Length == 1) await applyMigration(token, target.Mode);
+                Console.WriteLine(target.Mode+": applied "+target.Pending.Length+" schema migrations; existing records preserved.");
             }
         } finally {File.Delete(tokenFile);}
+    }
+
+    static BankingDb SchemaDatabase(IConfiguration config, string mode, string token)
+    {
+        var raw=CloudHosting.ValidateConnection(config.GetConnectionString(mode=="Demo"?"Banking":"BankingLive")!,mode);
+        var cs=new SqlConnectionStringBuilder(raw){Authentication=SqlAuthenticationMethod.NotSpecified};
+        var sql=new SqlConnection(cs.ConnectionString){AccessToken=token};
+        var workspace=new Workspace();workspace.Select(mode);
+        return new BankingDb(new DbContextOptionsBuilder<BankingDb>()
+            .UseSqlServer(sql, contextOwnsConnection: true).Options,workspace);
     }
     public static async Task Run(IServiceProvider services, IConfiguration config)
     {
