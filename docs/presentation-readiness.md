@@ -125,3 +125,8 @@ Commands: `dotnet build Banking.sln --no-restore -c Release`; `node --test --tes
 Implementation branch: `codex/presentation-readiness-20261012`, based on `f7dc607`. Feature/main SHAs and PR are recorded in the final delivery report after remote verification. No tracked GitHub Actions/Azure pipeline deploy trigger exists; deployment uses the explicit authenticated deployment script. GitHub connector metadata is available; CLI protection inspection remains Forbidden. Required server checks/protection must still be respected. No force push or bypass is allowed.
 
 Deploy-ready scope: additional advisor reads and host allowlist, Pension input/parser/review refinements, shared single-action header fix, 360 request orchestration, and the already merged independent Saxo-delay feature. Release authorization is still required; deployment, when authorized, must use GPT-6 Luna at medium per Dan's standing preference. The release rehearsal must include Dan and the physical microphone rather than silently marking those accepted from Demo fixtures.
+
+
+## 15 October follow-up
+
+[Shared Demo repair and annotation compatibility](demo-repair-2026-10-15.md) records the applied Danish classification/internal-transfer repairs, protected manual decisions, period/account/budget/goal reconciliation and responsive browser evidence. The Demo data correction is effective through normal deployed APIs. Current Codex annotation hashes and the synthetic bill-counterparty source fix require an authorized release; no code was deployed. This does not repeat the already merged presentation-readiness batch or complete Dan/microphone/PFA acceptance.

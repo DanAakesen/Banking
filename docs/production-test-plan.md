@@ -601,3 +601,19 @@ Deadline **22 October 2026**, Demo presentation. Current scope, exact checks and
 - SAXO-DELAY-04: Compare with Accounts at 1440, 1024 and 390 px in light/dark themes; check wrapping, keyboard navigation, no horizontal overflow/CSP errors, and accessible text labels. LIVE research remains independent of SIM/LIVE trading mode; private LIVE portfolio/order data is not shown in Demo. Do not place trades or change subscriptions to perform acceptance.
 
 Engineering evidence is recorded in docs/saxo-market-data.md. Isolated browser fixtures do not establish owner acceptance or live-provider results. No production failure injection is authorized.
+
+
+## ANNOTATE / DEMO-REPAIR — 15 October 2026
+
+[Implementation and evidence](demo-repair-2026-10-15.md). The shared synthetic data repair is applied; annotation CSP and synthetic metadata generator changes are source-only, pending deployment. Previous presentation-readiness implementation remains merged and undeployed. Owner/microphone/PFA acceptance is unchanged.
+
+| ID | Steps and expected result | Status / evidence |
+|---|---|---|
+| ANNOTATE-01 | In the actual Codex browser, enable annotation on Azure; overlay covers the viewport, selection/cursor work and normal page interaction resumes when closed. | Pending authorized deployment and actual Codex acceptance. Source-derived Chromium: 12 scenarios at 1440/1024/390 px pass. |
+| ANNOTATE-02 | Main frontend-host and Azure main CSP retain the old stylesheet hash and permit only three verified current stylesheet hashes; unrelated inline style/script/handlers remain blocked. | Source parity, middleware and transport tests pass; old deployed policy verified unchanged. |
+| ANNOTATE-03 | Demo cannot read Dan/Live accounts after the CSP update; advisor/artifact/frame/script boundaries remain unchanged. | Isolated middleware and existing transport authorization checks; live Demo-to-Live read must return 403. |
+| DEMO-REPAIR-01 | Dry-run in a fresh Demo-only session; require one active product-demo connection and only synthetic accounts/rows. Changed/tampered plans, conflicts, disabled rules or ambiguous transfers stop safely. | 13 isolated Python protocol tests pass. No Dan/SQL/reset/sync path. |
+| DEMO-REPAIR-02 | Inspect October Summary/360: income 53,000 DKK, expenses 27,897 DKK, uncategorized 64 DKK; five internal pairs (30,800 DKK) excluded from both sides. | Applied and ledger/API verified 15 October. Two intentional 32 DKK coffee examples remain. |
+| DEMO-REPAIR-03 | September income 53,225 DKK, expenses 39,876 DKK. Preserve two manually cleared 850 DKK categories; exclude the two unmatched savings pairs. | Applied and ledger/API verified. The 1,700 DKK remaining uncategorized is preserved manual input. |
+| DEMO-REPAIR-04 | Compare Summary, Accounts, cash flow, all categories, budget links/actuals, savings, balances and goal journeys over relevant periods; repeat repair produces no financial writes. | 40 periods, five accounts, four budget/month combinations and three journeys reconcile; full second apply is a no-op. |
+| DEMO-REPAIR-05 | Inspect deployed corrected Demo 360 spending-by-category, Accounts, Budgets, Goals and Review at 1440/1024/390 px with dark/light themes and Danish mobile. No financial writes during browser acceptance. | PASS: 24 live screenshots; no financial writes, overflow, page errors or CSP violations. Runtime receipt in `artifacts/demo-repair/browser/`; owner/presentation-device acceptance remains separate. |

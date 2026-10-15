@@ -147,7 +147,7 @@ public sealed class ProductDemoProvider(TimeProvider clock) : IBankProvider
             if(row.Status == "BOOK") balance += row.Amount;
             string? counterpart = null;
             if(row.Description.Contains("transfer") || row.Description.Contains("contribution returned"))
-                counterpart = role == "everyday" ? row.Description.Contains("car") ? "car" : row.Description.Contains("summer") ? "summerhouse" : "savings" : "everyday";
+                counterpart = role == "everyday" ? row.Description.Contains("bills") ? "bills" : row.Description.Contains("car") ? "car" : row.Description.Contains("summer") ? "summerhouse" : "savings" : "everyday";
             enriched.Add(row with { Details = DemoBankDetails.Transaction(DisplayName(row.Description),row.Amount,role,row.Status == "BOOK" ? balance : null,counterpart) });
         }
         return enriched;
