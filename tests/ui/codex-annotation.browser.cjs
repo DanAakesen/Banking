@@ -11,9 +11,11 @@ const expected=[['sha256-WO55anZ1V8A0G22bY2t72RV4dI79SLI4VnYLgsEeWUc=',5382],['s
  const fixture=JSON.parse(await fs.readFile(process.env.ANNOTATION_FIXTURE||path.join(root,'artifacts/codex-annotation/styles.json'),'utf8'));
  fixture.styles.forEach((s,i)=>{assert.equal(s.css.length,expected[i][1]);assert.equal('sha256-'+createHash('sha256').update(s.css).digest('base64'),expected[i][0]);});
  const backend=await fs.readFile(path.join(root,'src/Banking.Api/Security/LocalSecurity.cs'),'utf8');
- const policy=backend.match(/Headers\["Content-Security-Policy"\] = "([^"]+)"/)[1];
+ const sourcePolicy=backend.match(/Headers\["Content-Security-Policy"\] = "([^"]+)"/)[1];
  const host=await fs.readFile(path.join(root,'tools/frontend-host/Program.cs'),'utf8');
- assert.equal(policy,host.match(/MainContentSecurityPolicy = "([^"]+)"/)[1]);
+ assert.equal(sourcePolicy,host.match(/MainContentSecurityPolicy = "([^"]+)"/)[1]);
+ const policy=process.env.ANNOTATION_POLICY_FILE?(await fs.readFile(process.env.ANNOTATION_POLICY_FILE,'utf8')).trim():sourcePolicy;
+ assert.equal(policy,sourcePolicy,'Observed deployed policy must match the reviewed source policy');
  const legacy=expected.reduce((p,[h])=>p.replace(" '"+h+"'",''),policy);
  const out=path.join(root,'artifacts/codex-annotation');await fs.mkdir(out,{recursive:true});
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox']});
@@ -47,5 +49,5 @@ const expected=[['sha256-WO55anZ1V8A0G22bY2t72RV4dI79SLI4VnYLgsEeWUc=',5382],['s
    results.push({width,current,cursor,...state});await context.close();
   }
  }finally{await browser.close();}
- await fs.writeFile(path.join(out,'results.json'),JSON.stringify(results,null,2));console.log(JSON.stringify({passed:results.length,sourceVersion:fixture.version,actualCodexPreloadAcceptance:false}));
+ await fs.writeFile(path.join(out,'results.json'),JSON.stringify(results,null,2));console.log(JSON.stringify({passed:results.length,sourceVersion:fixture.version,observedDeployedPolicy:!!process.env.ANNOTATION_POLICY_FILE,actualCodexPreloadAcceptance:false}));
 })().catch(e=>{console.error(e);process.exitCode=1});
