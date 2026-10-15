@@ -34,3 +34,20 @@ Cloud evidence: audited locked restore and Release build pass with zero warnings
 At the pre-release observation Azure still serves `2026.09.29-saxo-session-keepalive`. No rollout or rollback has been claimed. The first cloud run must produce its own exact main SHA/build, artifact digest, deployment ID/status and Azure-side rollback checksum, then pass the hosted gates. The 12 Chromium reconstruction cases pass for Codex source version 26.1007.9446.0; the ignored CSS fixture is not shipped or bundled into CI. After rollout, capture the served CSP in an ignored file and pass `ANNOTATION_POLICY_FILE` to `tests/ui/codex-annotation.browser.cjs` to require exact deployed-policy parity. Main/Dan must separately verify the actual embedded annotation tool.
 
 A same-SHA retry supports a failed schema preflight after the separate migration step: it reuses the existing preflight ZIP only when its remote SHA-256 matches the immutable package, then deletes and recreates that source-SHA staging directory before rerunning the gate. The rollback snapshot is reused only when unpacking it and comparing it recursively with current `wwwroot` proves the deployed files are unchanged. A different archive, changed live files, or any comparison/checksum error fails closed; existing files are never overwritten. A successful file rollback restores application code and restarts the existing service; it leaves `/home/Banking`, keys, provider sessions, appsettings and databases intact. Kudu's latest deployment record may remain failed; confirm the restored runtime/assets rather than describing that record as successful. No rollback of financial data is performed.
+
+## Validated pension release candidate — 15 October 2026
+
+After verifying that the repository is now public, Main independently verified GitHub Cloud run `38773218038` at exact main `ecebc1dc693715aabeb8bc0227ca4bf87344c4d3`: locked restore, backend/frontend-host/Node/Python tests, build and artifact upload succeeded. Deployment was skipped with activation unset. The earlier zero-step runner/billing gate is resolved; do not repeat its failed runs or duplicate the current dispatch.
+
+| Immutable artifact | Verified value |
+|---|---|
+| GitHub artifact ID | `11992876572` |
+| Outer artifact size | `66868695` bytes |
+| Outer SHA-256 digest | `3a08237ca5a3307b5c1d10b6f276150a6974d75819d00c59a416683ee885086c` |
+| Inner release ZIP size | `66833020` bytes |
+| Inner release ZIP SHA-256 | `53856d0dbba710ed6f1ed217c14898f48da864dd3750e92b204885690bbc78fe` |
+| Manifested files | `213` |
+
+These are Main's independently checked GitHub artifact values, distinct from the worker's earlier package-validation ZIP. Use the exact immutable GitHub artifact for this release, preserve outer and inner checksum checks, and report its own Azure verification/rollback evidence. Artifact success does not establish production migration, deployment or actual owner-file acceptance.
+
+Main's existing Luna medium `banking_deploy_connection` delegate owns the serialized control-plane token-helper/stage/schema/activation/deployment operations for this release. Dan explicitly approved the [standing protected-token helper procedure](cloud-development.md#protected-migration-token-exception--confirmed-15-october-2026). Do not duplicate that writer or shift current main during the exact-SHA release. Further documentation branches remain unmerged until Main confirms release completion or coordinates otherwise. Owner-only private preview/save is explicitly authorized; product Demo work remains held until [actual owner acceptance](pensionsinfo-import.md#owner-sign-in-and-actual-file-acceptance).

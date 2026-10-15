@@ -16,15 +16,27 @@ The approved identity is a dedicated single-tenant deployment principal with iss
 
 Product decisions and actions outside the presentation scope still go through Main to Dan. Preserve actual explicit human confirmation for financial actions, private Dan mutations, paid/new resources, secrets and materially expanded access. The communication/heartbeat protocol below remains in force; it does not expand those permissions. No per-release pause is required for the now-authorized validated refinements.
 
+## Protected migration token exception — confirmed 15 October 2026
+
+Dan explicitly approved in Banking Main: “Yes, use the Windows helper this once for the encrypted migration token. Then deploy, import my pension file to Dan only, and add fictional demo pension data in the same format. Report back when done. You dont need to ask permission for this in the future”. Main confirmed that the standing exception applies narrowly to the **existing Windows `Banking.Deployment.dll refresh-operator` helper**, solely to obtain and protect a short-lived SQL operator token using the existing owner Azure session and existing protected configuration/keyring. Repeat that same bounded procedure for authorized reviewed releases without another generic permission request. This supersedes the earlier prohibition on this particular helper; it does not permit local implementation, rebuilding the helper, app execution, builds, tests or preview.
+
+Main's existing Luna medium control-plane delegate owns token preparation, authenticated SCM staging, the Azure schema operation and deployment for the current serialized release. The developer and its release delegate must not duplicate those operations. Keep the exact release source frozen at `ecebc1dc693715aabeb8bc0227ca4bf87344c4d3` until Main reports completion or rollback; prepare further documentation on a separate branch and hold its merge.
+
+Only the encrypted `operator.protected` output is uploaded over the existing Entra-authenticated SCM route to `/home/Banking/deployment/operator.protected`. Never print or persist a plaintext token, expose protected configuration/key material, transfer credentials into the development executor, add SQL roles, create secrets/identities, change billing or use publishing profiles. Remove the local encrypted handoff in `finally`; `CloudImport.Schema` removes its remote token in `finally`. Check failures and cleanup without logging secret contents.
+
+Review the exact candidate and pending additive migrations before mutation. Stage and verify the immutable cloud-built package away from `wwwroot`, invoke only `dotnet Banking.Api.dll --Maintenance:Action=cloud-schema` in that Azure staging directory, then require `--verify-pension-schema` to pass in both existing databases before code rollout. Do not invoke `cloud-import` or `cloud-grant`. Application/schema execution, builds and tests remain in cloud/Azure. The workflow's site-only OIDC identity and runtime data-only SQL roles stay unchanged. Code rollback preserves the additive schema, originals and history.
+
+The same direct instruction authorizes Main to privately preview, verify and save the supplied authentic PensionsInfo report into **Dan only**; another generic save-consent question is unnecessary. Actual source review, explicit API/UI confirmation, concurrency protection and successful owner acceptance remain required. Only afterward may independently fictional Demo pension data use those proven contracts. This consent does not authorize unrelated financial operations or guessed values. See [owner acceptance](pensionsinfo-import.md#owner-sign-in-and-actual-file-acceptance).
+
 ## Coordinator and sole developer protocol — 15 October 2026
 
 Dan's direct instruction in **Banking Main**, “Then set that up, so you can orchestrate and the other session can develop,” confirms the existing two-chat arrangement. The coordinator supplied that human-turn reference with the setup delegation; this protocol does not invent an environment switch or create another worker.
 
 | Role | Existing route and responsibility |
 |---|---|
-| Coordinator | **Banking Main**, app thread `01a07af7-0da1-7fe2-9017-0dee7c413b9a`, host `local`. Collect Dan's requirements and human approvals, send bounded already-authorized work, review results and independently verify GitHub/Azure evidence. Local execution remains coordination only. |
+| Coordinator | **Banking Main**, app thread `01a07af7-0da1-7fe2-9017-0dee7c413b9a`, host `local`. Collect Dan's requirements and human approvals, send bounded already-authorized work, review results and independently verify GitHub/Azure evidence. Local execution remains coordination plus the narrowly approved protected-token helper above. |
 | Sole developer | This existing **Banking New CC** chat, selected by Main's supported app route, using the published private Banking cloud environment and `/workspace/Banking` → `DanAakesen/Banking`. Implement, review, validate, commit, push and merge under the standing workflow. Resolve the existing chat's actual app ID from Main's thread metadata when needed; do not substitute a display name, host ID, runtime/configuration ID or a new chat. |
-| Collection | Main's active desktop heartbeat **Coordinate Banking cloud development**, every two minutes, as confirmed by the coordinator's setup handoff. It collects developer status, reviews finished work and sends the next already-authorized step. This worker does not recreate or reschedule it. |
+| Collection | Main's **Coordinate Banking cloud development** heartbeat was configured every two minutes but is now **paused** by Main. Leave accurate reports in this existing developer chat for coordinator collection. Do not recreate, resume or reschedule the timer. |
 
 The old **Banking New** worker stays paused. Jarvis is a separate project/environment. Main must explicitly release ownership and hand off work before replacing the sole developer; never run duplicate code or shared-Demo writers.
 
@@ -37,7 +49,7 @@ The old **Banking New** worker stays paused. Jarvis is a separate project/enviro
 
 ### Completion and blockers
 
-On completion or a meaningful blocker, send **one concise report to Banking Main** if the supported messaging tool is exposed and the direct human authorization has been verified. Always leave the same accurate outcome in a final reply in Banking New CC so Main's heartbeat can collect it. Report:
+On completion or a meaningful blocker, send **one concise report to Banking Main** if the supported messaging tool is exposed and the direct human authorization has been verified. Always leave the same accurate outcome in a final reply in Banking New CC for Main to collect while its timer is paused. Report:
 
 1. What changed and whether the requested outcome is complete or blocked.
 2. Repository/branch, exact pushed source SHA, remote `main`/integration SHA and PR URL/state; distinguish unpushed work and verify the remote result.
@@ -45,11 +57,11 @@ On completion or a meaningful blocker, send **one concise report to Banking Main
 4. Source-versus-deployed state: current observed Azure build/assets when relevant, whether a deployment occurred and what remains pending. A Git merge is not deployment evidence.
 5. Any blocker, the exact decision or access needed and the next already-authorized step. Route new product, identity, financial or release decisions through Main; do not infer approval from elapsed time.
 
-The heartbeat stays quiet when state is unchanged or non-actionable. Repeated polls, acknowledgement chains and copied progress updates must not produce message loops. Do not redispatch completed work; the applied Demo repair is already verified and must not be rerun as setup. If no authorized task remains, leave a clear ready/waiting state for Main.
+The heartbeat remains paused. If Main later authorizes resuming it, it must stay quiet when state is unchanged or non-actionable. Repeated polls, acknowledgement chains and copied progress updates must not produce message loops. Do not redispatch completed work; the applied Demo repair is already verified and must not be rerun as setup. If no authorized task remains, leave a clear ready/waiting state for Main.
 
 ### Capability observation and fallback
 
-At setup in Banking New CC, tool discovery exposed no supported reciprocal `send_message_to_thread` capability. The supported attempt to read Main's referenced human turn returned **“connection closed before server request was answered”**; that direct read was not verified in the worker. No reciprocal message was sent or claimed. The coordinator's configured two-minute heartbeat is therefore the collection route for the worker's final report. Recheck supported capabilities when needed, and send only after the required trusted authorization evidence is accessible. Do not bypass missing tools with private app files, another channel or a new chat, and do not ask Dan to repeat already-authorized routine work solely because reciprocal messaging is unavailable.
+At setup in Banking New CC, tool discovery exposed no supported reciprocal `send_message_to_thread` capability. The supported attempt to read Main's referenced human turn returned **“connection closed before server request was answered”**; that direct read was not verified in the worker. No reciprocal message was sent or claimed. Leave final reports in this existing chat for Main to collect; its timer is paused. Recheck supported capabilities when needed, and send only after the required trusted authorization evidence is accessible. Do not bypass missing tools with private app files, another channel or a new chat, and do not ask Dan to repeat already-authorized routine work solely because reciprocal messaging is unavailable.
 
 ## Working rules
 
