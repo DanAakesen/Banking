@@ -8,6 +8,7 @@ import hashlib
 import http.client
 import json
 import re
+import secrets
 import socket
 import ssl
 import subprocess
@@ -37,6 +38,7 @@ SCM_URL = f"https://{APP}.scm.azurewebsites.net"
 MAX_SITE_ZIP = 512 * 1024 * 1024
 POLL_SECONDS = 5
 DEPLOY_TIMEOUT_SECONDS = 900
+SCHEMA_RESULT_TTL_SECONDS = 180
 CAPTURE_PHASES = frozenset({
     "capture-artifact", "capture-azure-context", "capture-baseline", "capture-token",
     "capture-scm-probe", "capture-backup", "capture-assets", "capture-evidence",
@@ -113,6 +115,84 @@ def require_sha(value: str) -> str:
     if not re.fullmatch(r"[0-9a-f]{40}", value):
         raise ReleaseError("The source SHA must be a full lowercase Git commit SHA.")
     return value
+
+
+def schema_invocation(source_sha: str, archive_sha256: str) -> dict[str, Any]:
+    """Private result contract; submitting a command never establishes completion."""
+    require_sha(source_sha)
+    if not re.fullmatch(r"[0-9a-f]{64}", archive_sha256):
+        raise ReleaseError("Schema invocation archive checksum is invalid.")
+    invocation = secrets.token_hex(16)
+    issued = int(time.time())
+    return {"sourceSha": source_sha, "archiveSha256": archive_sha256,
+            "invocationId": invocation, "requestedAt": issued,
+            "expiresAt": issued + SCHEMA_RESULT_TTL_SECONDS,
+            "markerPath": schema_marker_path(source_sha, invocation)}
+
+
+def schema_marker_path(source_sha: str, invocation_id: str) -> str:
+    require_sha(source_sha)
+    if not re.fullmatch(r"[0-9a-f]{32}", invocation_id):
+        raise ReleaseError("Schema invocation identity is invalid.")
+    return f"/home/Banking/releases/.schema-preflight/{source_sha}/{invocation_id}.json"
+
+
+def validate_schema_invocation(invocation: dict[str, Any]) -> None:
+    try:
+        if (not isinstance(invocation, dict) or set(invocation) !=
+            {"sourceSha", "archiveSha256", "invocationId", "requestedAt", "expiresAt", "markerPath"}
+            or not all(isinstance(invocation[key], str) for key in ("sourceSha", "archiveSha256", "invocationId", "markerPath"))
+            or not re.fullmatch(r"[0-9a-f]{64}", invocation["archiveSha256"])
+            or invocation["markerPath"] != schema_marker_path(invocation["sourceSha"], invocation["invocationId"])
+            or type(invocation["requestedAt"]) is not int or type(invocation["expiresAt"]) is not int
+            or invocation["requestedAt"] < 0
+            or invocation["expiresAt"] - invocation["requestedAt"] != SCHEMA_RESULT_TTL_SECONDS):
+            raise ValueError()
+    except (ValueError, TypeError, KeyError, ReleaseError):
+        raise ReleaseError("Schema invocation binding is invalid.") from None
+
+
+def validate_schema_result(raw: bytes, invocation: dict[str, Any], now: int) -> dict[str, Any]:
+    """Accept bounded terminal metadata only. Never echo marker contents or exceptions."""
+    validate_schema_invocation(invocation)
+    try:
+        if not raw or len(raw) > 4096:
+            raise ValueError()
+        result = json.loads(raw)
+        expected = {"schemaVersion", "app", "sourceSha", "archiveSha256", "invocationId", "requestedAt",
+                    "expiresAt", "startedAt", "finishedAt", "state", "exitCode", "scope"}
+        if not isinstance(result, dict) or set(result) != expected:
+            raise ValueError()
+        if (type(result["schemaVersion"]) is not int or result["schemaVersion"] != 1
+            or result["app"] != APP or result["scope"] != ["Demo", "Live"]
+            or any(result[key] != invocation[key] for key in
+                   ("sourceSha", "archiveSha256", "invocationId", "requestedAt", "expiresAt"))
+            or any(type(result[key]) is not int for key in
+                   ("requestedAt", "expiresAt", "startedAt", "finishedAt", "exitCode"))
+            or not invocation["requestedAt"] - 30 <= result["startedAt"] <= result["finishedAt"] <= invocation["expiresAt"]
+            or not invocation["requestedAt"] - 30 <= now <= invocation["expiresAt"]
+            or result["finishedAt"] > now + 30
+            or result["state"] != "completed" or result["exitCode"] != 0):
+            raise ValueError()
+    except (ValueError, TypeError, KeyError, UnicodeDecodeError):
+        raise ReleaseError("Schema result is invalid, stale, incomplete or unsuccessful.") from None
+    return {"verified": True, "sourceSha": invocation["sourceSha"],
+            "archiveSha256": invocation["archiveSha256"], "invocationId": invocation["invocationId"],
+            "scope": ["Demo", "Live"], "finishedAt": result["finishedAt"]}
+
+
+def wait_for_schema_result(invocation: dict[str, Any], read_metadata) -> dict[str, Any]:
+    """Adapter-independent polling: accepted/inflight/missing can never pass a release."""
+    validate_schema_invocation(invocation)
+    deadline = time.monotonic() + SCHEMA_RESULT_TTL_SECONDS
+    while time.monotonic() < deadline and time.time() <= invocation["expiresAt"]:
+        raw = read_metadata(invocation["markerPath"])
+        if time.monotonic() >= deadline:
+            break
+        if raw is not None:
+            return validate_schema_result(raw, invocation, int(time.time()))
+        time.sleep(POLL_SECONDS)
+    raise ReleaseError("Schema command has no verified terminal result before its deadline.")
 
 
 def run_az(*args: str) -> str:
