@@ -20,7 +20,7 @@ using static Banking.Tests.PensionHistoryTests;
 
 namespace Banking.Tests;
 
-public sealed class PensionEndpointTests
+public sealed partial class PensionEndpointTests
 {
     sealed class Host : IAsyncDisposable
     {
@@ -45,6 +45,7 @@ public sealed class PensionEndpointTests
             App.UseMiddleware<LocalAccessMiddleware>(); App.UseMiddleware<WorkspaceMiddleware>(); App.MapPensionApi();
             App.MapGet("/api/wealth",(WealthService service,CancellationToken ct)=>service.List(ct));
             App.MapGet("/api/wealth/summary",(WealthService service,CancellationToken ct)=>service.Summary("DKK",ct));
+            App.MapGet("/api/wealth/overview",(WealthService service,CancellationToken ct)=>service.Overview("DKK",ct));
             foreach(var conn in new[]{demo,live}) { await using var db=new BankingDb(Options(conn)); await db.Database.EnsureCreatedAsync(); }
             await App.StartAsync();
             Sessions=App.Services.GetRequiredService<BrowserSessions>();
@@ -83,14 +84,14 @@ public sealed class PensionEndpointTests
         var snapshotId=detail.GetProperty("snapshotId").GetString();
         using var visitor=host.Client("Demo","Demo");using var anonymous=host.Client(null);using var forged=host.Client("Demo","Live");
         foreach(var client in new[]{visitor,anonymous,forged}) {
-            var expected=client==anonymous?HttpStatusCode.Unauthorized:HttpStatusCode.Forbidden;
+            var expected=client==anonymous?HttpStatusCode.Unauthorized:client==visitor?HttpStatusCode.NotFound:HttpStatusCode.Forbidden;
             foreach(var route in new[]{$"pension/uploads/{id}",$"pension/uploads/{id}/original",$"pension/snapshots/{snapshotId}"})
                 Assert.Equal(expected,(await client.GetAsync("/api/"+route)).StatusCode);
             Assert.Equal(expected,(await client.PostAsJsonAsync($"/api/pension/uploads/{id}/approve",input)).StatusCode);
             Assert.Equal(expected,(await client.PostAsJsonAsync($"/api/pension/uploads/{id}/parse",new {version=receipt.GetProperty("version").GetString()})).StatusCode);
             Assert.Equal(expected,(await client.PostAsJsonAsync($"/api/pension/uploads/{id}/link",new{version=receipt.GetProperty("version").GetString(),snapshotId,confirm=true})).StatusCode);
         }
-        Assert.Equal(HttpStatusCode.Forbidden,(await visitor.GetAsync("/api/pension/uploads")).StatusCode);
+        Assert.Empty((await visitor.GetFromJsonAsync<JsonElement>("/api/pension/uploads")).GetProperty("items").EnumerateArray());
         Assert.DoesNotContain("protectedOriginal",detail.GetRawText());Assert.DoesNotContain("previewJson",detail.GetRawText());
         Assert.Equal(HttpStatusCode.Unauthorized,(await anonymous.GetAsync("/api/pension/uploads")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden,(await forged.GetAsync("/api/pension/uploads")).StatusCode);
@@ -112,7 +113,7 @@ public sealed class PensionEndpointTests
         using var demo = host.Client("Demo", "Demo"); using var anonymous = host.Client(null); using var forged = host.Client("Demo", "Live");
         foreach (var client in new[] { demo, anonymous, forged })
         {
-            var expected = client == anonymous ? HttpStatusCode.Unauthorized : HttpStatusCode.Forbidden;
+            var expected = client == anonymous ? HttpStatusCode.Unauthorized : client == demo ? HttpStatusCode.NotFound : HttpStatusCode.Forbidden;
             Assert.Equal(expected, (await client.PostAsJsonAsync($"/api/pension/uploads/{id}/parse", new { version = retried.GetProperty("version").GetString() })).StatusCode);
             Assert.Equal(expected, (await client.GetAsync($"/api/pension/uploads/{id}/original")).StatusCode);
         }
@@ -154,7 +155,7 @@ public sealed class PensionEndpointTests
         if(Environment.GetEnvironmentVariable("BANKING_PENSION_BROWSER_FIXTURE_DIR") is {Length:>0} fixtureFolder)
             await File.WriteAllTextAsync(Path.Combine(fixtureFolder,"report-correction.json"),JsonSerializer.Serialize(PensionReportParser.Parse(SyntheticPensionReport.Create("correction")),Json));
         var summary=await owner.GetFromJsonAsync<JsonElement>("/api/wealth/summary");Assert.Equal(431000,summary.GetProperty("pension").GetDecimal());
-        Assert.Equal(HttpStatusCode.Forbidden,(await visitor.GetAsync("/api/pension/uploads")).StatusCode);Assert.Equal(1,await host.WealthCount());
+        Assert.Empty((await visitor.GetFromJsonAsync<JsonElement>("/api/pension/uploads")).GetProperty("items").EnumerateArray());Assert.Equal(1,await host.WealthCount());
     }
     [Fact]
     public async Task OwnerPreviewRetainsPrivateOriginalButDemoAndAnonymousCannotReadIt()
@@ -166,19 +167,20 @@ public sealed class PensionEndpointTests
         var original=await owner.GetAsync($"/api/pension/uploads/{id}/original");original.EnsureSuccessStatusCode();
         Assert.Contains("no-store",original.Headers.CacheControl!.ToString());Assert.Equal("attachment",original.Content.Headers.ContentDisposition!.DispositionType);
         Assert.True((await original.Content.ReadAsByteArrayAsync()).AsSpan().StartsWith("%PDF"u8));
-        using var visitor=host.Client("Demo","Demo");Assert.Equal(HttpStatusCode.Forbidden,(await visitor.GetAsync($"/api/pension/uploads/{id}/original")).StatusCode);
+        using var visitor=host.Client("Demo","Demo");Assert.Equal(HttpStatusCode.NotFound,(await visitor.GetAsync($"/api/pension/uploads/{id}/original")).StatusCode);
         using var forged=host.Client("Demo","Live");Assert.Equal(HttpStatusCode.Forbidden,(await forged.GetAsync($"/api/pension/uploads/{id}")).StatusCode);
         using var anonymous=host.Client(null);Assert.Equal(HttpStatusCode.Unauthorized,(await anonymous.GetAsync($"/api/pension/uploads/{id}/original")).StatusCode);
         owner.DefaultRequestHeaders.Remove("Origin");owner.DefaultRequestHeaders.Add("Origin","https://evil.example");
         Assert.Equal(HttpStatusCode.Forbidden,(await owner.PostAsync("/api/pension/uploads",Pdf())).StatusCode);
     }
     [Fact]
-    public async Task DemoCannotUploadOrGenerateReportsBeforeOwnerAcceptance()
+    public async Task DemoCannotUploadPrivateReportsOrGenerateSamplesInLive()
     {
         await using var host=new Host();await host.Init();using var demo=host.Client("Demo","Demo");
         Assert.Equal(HttpStatusCode.Forbidden,(await demo.PostAsync("/api/pension/uploads",Pdf())).StatusCode);
-        Assert.Equal(HttpStatusCode.MethodNotAllowed,(await demo.PostAsJsonAsync("/api/pension/uploads/demo",new{version="later"})).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden,(await demo.GetAsync("/api/pension/uploads")).StatusCode);
+        using var owner = host.Client();
+        Assert.Equal(HttpStatusCode.Forbidden,(await owner.PostAsJsonAsync("/api/pension/uploads/demo",new{version="later"})).StatusCode);
+        Assert.Empty((await demo.GetFromJsonAsync<JsonElement>("/api/pension/uploads")).GetProperty("items").EnumerateArray());
         Assert.Equal(0,await host.WealthCount());
     }
     [Fact]
