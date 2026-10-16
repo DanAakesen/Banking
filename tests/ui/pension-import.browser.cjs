@@ -82,13 +82,13 @@ async function run(browser,{width,theme,lang='en',live=true}){
    await page.locator('#pension-retry-confirm').locator('..').locator('..').locator('summary').click();
    assert.equal(await page.locator('#pension-retry').isDisabled(),true);
    await page.locator('[data-number="balance.0"]').fill('123');await page.locator('#pension-retry-confirm').check();await page.locator('#pension-retry').click();
-   await page.waitForFunction(()=>document.querySelector('.pension-receipt').textContent.includes('pensionsinfo-text-2'));
+   await page.waitForFunction(version=>document.querySelector('.pension-receipt').textContent.includes(version),reports.columns.parserVersion);
    assert.equal(await page.locator('[data-number="balance.0"]').inputValue(),'927000');assert.equal(receipts.length,1);assert.equal(parseCalls,1);assert.equal(records.length,0);assert.equal(snapshots.length,0);assert.equal(writes.length,0);
    await page.locator('#pension-review').evaluate(el=>el.scrollIntoView({block:'start'}));await page.screenshot({path:path.join(out,`column-review-viewport-${width}-${theme}-${lang}.png`)});
    await page.locator('.pension-projections summary').click();await page.locator('#pension-scenario').selectOption('5');
    const table=await page.locator('#pension-payouts').innerText();assert.match(table,/70–84/);assert.match(table,/85–\+/);assert.match(table,/PFA/);const amounts=await page.locator('#pension-payouts [data-number]').evaluateAll(nodes=>nodes.map(n=>n.value));assert.ok(amounts.includes('536000'));assert.ok(amounts.includes('258000'));
    await page.locator('details').filter({has:page.locator('summary', {hasText:lang==='da'?'Forsikring':'Insurance'})}).locator('summary').click();
-   assert.equal(await page.locator('.pension-source-row [data-number^="insurance."]').count(),5);
+   assert.equal(await page.locator('.pension-source-row [data-number^="insurance."]').count(),5);assert.ok((await page.locator('[data-number^="insurance."]').evaluateAll(nodes=>nodes.map(n=>n.value))).includes('126000'));
    assert.doesNotMatch(await page.locator('#pension-review').innerText(),/87654321|2054/);
    await inspect('column-layout-reparsed');await page.goto(origin+'/#/accounts');await ready();await inspect('accounts-reference');console.log(`PASS column preview/retry ${width}px ${theme} ${lang}`);return;
   }

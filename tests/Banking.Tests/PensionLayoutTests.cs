@@ -9,9 +9,9 @@ public partial class PensionPdfTests
     [Fact]
     public async Task ColumnLayoutJoinsLogoOnlySummaryAndComponentsWithoutLeakingReferencesOrFutureDates()
     {
-        var bytes = ColumnPensionPdf.Create();
+        var bytes = ColumnPensionPdf.Create(criticalLayout: "left");
         var report = await new PensionPdfReader().Read(bytes, default);
-        Assert.Equal("pensionsinfo-text-2", report.ParserVersion);
+        Assert.Equal("pensionsinfo-text-3", report.ParserVersion);
         Assert.Equal(46, report.Pages); Assert.Null(report.ReportAsOf); Assert.Null(report.ReportDateSource);
         Assert.DoesNotContain(report.Warnings, w => w.Code is "CAPITAL_COLUMNS_REQUIRE_REVIEW" or "AGREEMENT_LINK_REQUIRES_REVIEW" or "SCENARIO_ROW_REQUIRES_REVIEW" or "SCENARIO_COLUMNS_REQUIRE_REVIEW");
         var a = Assert.Single(report.Agreements);
@@ -25,6 +25,7 @@ public partial class PensionPdfTests
         Assert.All(a.Components, c => { Assert.Equal(42, c.Balance.Source.Page); Assert.Equal(a.AsOf, c.Balance.Source.AsOf); });
         Assert.Contains(report.Warnings, w => w.Code == "REPORTED_COMPONENT_TOTAL_DIFFERENCE");
         Assert.True(report.BeforeTax && report.TodaysMoney);
+        Assert.Equal(126000, Assert.Single(report.Insurance, i => i.Type == "CriticalIllness").Amount.Value);
         var json = JsonSerializer.Serialize(report, Web);
         Assert.DoesNotContain(ColumnPensionPdf.Reference, json); Assert.DoesNotContain("2054", json);
         Assert.DoesNotContain("fictional column", json); Assert.DoesNotContain("protectedOriginal", json);
@@ -91,6 +92,33 @@ public partial class PensionPdfTests
         var conditional = PensionReportParser.Parse(ColumnPensionPdf.Create(conditional: true));
         Assert.Null(Assert.Single(conditional.Insurance, i => i.Type == "WorkCapacity").Amount.Value);
         Assert.Contains(conditional.Warnings, w => w.Code == "INSURANCE_CONDITIONS_REQUIRE_ORIGINAL_REVIEW");
+    }
+    [Theory]
+    [InlineData("left")]
+    [InlineData("bare")]
+    public void LeftInsuranceHeaderAnchorsOneProviderObservationWithoutCountingSubtotalFinalTotalOrNotes(string layout)
+    {
+        var report = PensionReportParser.Parse(ColumnPensionPdf.Create(criticalLayout: layout));
+        var cover = Assert.Single(report.Insurance, i => i.Type == "CriticalIllness");
+        Assert.Equal("PFA", cover.Provider); Assert.Equal(126000, cover.Amount.Value);
+        Assert.Equal(8, cover.Amount.Source.Page); Assert.Equal("DKK", cover.Amount.Source.Unit);
+        Assert.Equal("Reported", cover.Amount.Source.Status); Assert.Equal("Insurance source observation", cover.Amount.Source.Section);
+        Assert.Equal(5, report.Insurance.Length); Assert.Equal(927000, Assert.Single(report.Agreements).Balance.Value);
+        Assert.DoesNotContain(report.Warnings, w => w.Code == "INSURANCE_COLUMNS_REQUIRE_REVIEW" && w.Page == 8);
+        Assert.DoesNotContain(ColumnPensionPdf.Reference, JsonSerializer.Serialize(report, Web));
+    }
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("ambiguous")]
+    [InlineData("notes")]
+    [InlineData("misaligned")]
+    [InlineData("multipleCells")]
+    public void LeftInsuranceHeaderDoesNotGuessGeometryFromMissingAmbiguousOrUnalignedMoney(string layout)
+    {
+        var report = PensionReportParser.Parse(ColumnPensionPdf.Create(criticalLayout: layout));
+        Assert.DoesNotContain(report.Insurance, i => i.Type == "CriticalIllness");
+        Assert.Contains(report.Warnings, w => w.Code == "INSURANCE_COLUMNS_REQUIRE_REVIEW" && w.Page == 8);
+        Assert.Equal(927000, Assert.Single(report.Agreements).Balance.Value);
     }
     [Fact]
     public void MissingSavingDatesNeverUseFuturePayoutOrContributionDatesAndAmbiguousReferencesNeverAllocateContribution()
