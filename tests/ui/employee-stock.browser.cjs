@@ -1,67 +1,78 @@
-// Isolated frontend/HTTP fixtures only. DTO and XLSX are emitted by the real C# parser test.
+// Real C#-generated synthetic receipt/snapshot/history DTOs. No production API or owner file.
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),{chromium}=require('playwright');
-const root=path.resolve(__dirname,'../../src/Banking.Api/wwwroot'),out=path.resolve(__dirname,'../../artifacts/employee-stock-preview'),origin='https://banking.fixture';
+const root=path.resolve(__dirname,'../../src/Banking.Api/wwwroot'),out=path.resolve(__dirname,'../../artifacts/employee-stock-history-browser'),origin='https://banking.fixture';
 const csp="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; frame-src 'self' https://www.tradingview-widget.com";
-(async()=>{await fs.mkdir(out,{recursive:true});const report=JSON.parse(await fs.readFile(path.join(out,'report.json'))),workbook=await fs.readFile(path.join(out,'synthetic.xlsx'));
- const browser=await chromium.launch({headless:true,executablePath:'/usr/bin/chromium',args:['--no-sandbox']});let count=0;
+(async()=>{await fs.mkdir(out,{recursive:true});const fixtures=Object.fromEntries(await Promise.all(['earlier-upload','later-upload','earlier-approved','later-approved','earlier-history','history','correction-upload','correction-approved','corrected-history','later-snapshot','duplicate-upload','duplicate-approved','duplicate-history'].map(async key=>[key,JSON.parse(await fs.readFile(path.join(out,key+'.json')))]))),files=await Promise.all(['earlier','later','correction'].map(k=>fs.readFile(path.join(out,k+'.xlsx'))));
+ const browser=await chromium.launch({headless:true,executablePath:'/usr/bin/chromium',args:['--no-sandbox']});let cases=0;
  try{for(const width of [1440,1024,390])for(const theme of ['light','graphite'])for(const lang of ['en','da']){
-  const context=await browser.newContext({viewport:{width,height:1000},hasTouch:width===390,reducedMotion:'reduce'}),page=await context.newPage(),errors=[],writes=[];let uploadCalls=0,slow=false,fail=false,role='Owner';
+  const context=await browser.newContext({viewport:{width,height:1000},hasTouch:width===390,reducedMotion:'reduce'}),page=await context.newPage(),errors=[],requests=[];let role='Owner',uploaded=0,approved=0,slow=false,linked=false,quoteAvailable=false;const receipts=new Map();
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(({theme,lang})=>{localStorage.setItem('banking.preferences.v1',JSON.stringify({theme,lang,aiGlass:false}));sessionStorage.setItem('banking.workspace','Live');document.addEventListener('securitypolicyviolation',e=>(window.__csp||=[]).push(e.violatedDirective));},{theme,lang});
+  const receipt=key=>structuredClone(fixtures[key]);
+  const history=()=>{const base=approved===0?{total:0,offset:0,items:[],development:[],developmentHasMore:false,current:null}:receipt(linked?'duplicate-history':approved>=3?'corrected-history':approved===1?'earlier-history':'history');base.total=receipts.size;base.items=[...receipts.values()].reverse().map(r=>({id:r.id,uploadedAt:r.uploadedAt,status:r.status,errorCode:r.errorCode,parserVersion:r.parserVersion,snapshotId:r.snapshotId,byteLength:r.byteLength}));return base;};
   await page.route('**/*',async route=>{
    const req=route.request(),u=new URL(req.url());if(u.origin!==origin)return route.abort();
    if(u.pathname.startsWith('/api/')){
     const p=u.pathname.slice(5),mode=req.headers()['x-banking-mode']||'Demo';let body={},status=200;
-    if(req.method()!=='GET')writes.push(p);
-    if(p==='browser/logout'){role=null;body={};}
-    else if(p==='browser/demo'){role='Demo';body={role:'Demo'};}
-    else if(p==='browser/status')body={role,passwordConfigured:true,localAdvisor:false};
-    else if(p==='mode')body={mode,availableModes:['Demo','Live']};
+    requests.push([req.method(),p,mode]);
+    if(p==='browser/logout'){role=null;body={};}else if(p==='browser/demo'){role='Demo';body={role:'Demo'};}
+    else if(p==='browser/status')body={role,passwordConfigured:true,localAdvisor:false};else if(p==='mode')body={mode,availableModes:role==='Owner'?['Demo','Live']:['Demo']};
     else if(['accounts','categories','wealth','research'].includes(p))body=[];
     else if(p==='transactions')body={items:[],total:0};
     else if(p==='account-insights')body={availableBalance:null,income:null,spending:null,net:null,retentionPercent:null,categories:[],coverage:{accountCount:0,sufficientHistory:false,oldestAccountSync:null}};
-    else if(p==='employee-stocks/preview'){
-     uploadCalls++;assert.equal(mode,'Live');assert.equal(req.headers()['content-type'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');assert.deepEqual(req.postDataBuffer(),workbook);
-     if(slow)await new Promise(r=>setTimeout(r,350));if(fail){status=400;body={error:'STOCK_INVALID_WORKBOOK'};}else body=report;
+    else if(p==='employee-stocks/uploads'&&req.method()==='GET'){assert.equal(mode,'Live');body=history();}
+    else if(p==='employee-stocks/uploads'&&req.method()==='POST'){
+     assert.equal(mode,'Live');assert.equal(req.headers()['content-type'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+     const index=Math.min(uploaded,3);assert.deepEqual(req.postDataBuffer(),files[slow||index===3?0:index]);uploaded++;if(slow){await new Promise(r=>setTimeout(r,350));body=receipt('earlier-upload');}else{body=receipt(['earlier','later','correction','duplicate'][index]+'-upload');receipts.set(body.id,body);}
     }
+    else if(/^employee-stocks\/uploads\/[^/]+\/original$/.test(p)){const key=['earlier','later','correction','duplicate'].find(k=>p.includes(fixtures[k+'-upload'].id));const index=key==='later'?1:key==='correction'?2:0;return route.fulfill({headers:{'X-Banking-Mode':mode,'Cache-Control':'no-store, private','Content-Disposition':'attachment; filename="Employee-shares.xlsx"'},contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',body:files[index]});}
+    else if(/^employee-stocks\/uploads\/[^/]+\/approve$/.test(p)){
+     const input=req.postDataJSON(),key=approved===0?'earlier':approved===1?'later':'correction',pending=fixtures[key+'-upload'];assert.equal(input.version,pending.version);assert.equal(input.confirm,true);assert.equal(input.acknowledgeWarnings,true);assert.equal(input.review.confirmProfile,true);assert.equal(input.review.currentHeldShares,approved===2?null:0);assert.equal(input.review.confirmHoldings,approved!==2);assert.equal(input.review.includeInWealth,false);assert.equal(input.review.priceUsd,null);assert.equal(input.review.dkkPerUsd,null);assert.equal(input.review.archived,approved>=1);
+     if(approved===2&&input.supersedesId!==fixtures['later-approved'].snapshotId){status=409;body={error:'STOCK_CORRECTION_CONFIRMATION_REQUIRED',details:{supersedesId:fixtures['later-approved'].snapshotId,approvedAt:fixtures['later-snapshot'].approvedAt}};}else{const accepted=receipt(key+'-approved');receipts.set(accepted.id,accepted);approved++;body={snapshotId:accepted.snapshotId,duplicate:false,wealthUpdated:false};}
+    }
+    else if(/^employee-stocks\/snapshots\/[^/]+$/.test(p))body=receipt('later-snapshot');
+    else if(p.endsWith('/link')){const value=req.postDataJSON();assert.equal(value.confirm,true);assert.equal(value.snapshotId,fixtures['earlier-approved'].snapshotId);const accepted=receipt('duplicate-approved');receipts.set(accepted.id,accepted);linked=true;body={snapshotId:accepted.snapshotId,duplicate:true,wealthUpdated:false};}
+    else if(/^employee-stocks\/uploads\/[^/]+$/.test(p)){body=receipts.get(p.split('/')[2]);assert.ok(body);}
     else if(p==='investments/saxo/portfolio'){status=503;body={error:'SAXO_SIGN_IN_REQUIRED'};}
-    else if(p.startsWith('markets/chart')){status=503;body={error:'SAXO_MARKET_SIGN_IN_REQUIRED'};}
-    else if(mode==='Demo'&&req.method()==='GET')body={};
-    else throw Error('Unexpected fixture '+req.method()+' '+p);
-    return route.fulfill({status,contentType:'application/json',headers:{'X-Banking-Mode':mode},body:JSON.stringify(body)});
+    else if(p.startsWith('markets/chart')){if(quoteAvailable){assert.equal(u.searchParams.get('symbol'),'MSFT');assert.equal(u.searchParams.get('range'),'1d');body={source:'Saxo LIVE',symbol:'MSFT:xnas',currency:'USD',assetType:'Stock',price:241,quoteStatus:'available',quoteTime:new Date(Date.now()-15*60000).toISOString(),retrievedAt:new Date().toISOString(),quoteDelayMinutes:15,historyStatus:'unavailable'};}else{status=503;body={error:'SAXO_MARKET_SIGN_IN_REQUIRED'};}}
+    else if(mode==='Demo'&&req.method()==='GET')body={};else throw Error('Unexpected fixture '+req.method()+' '+p);
+    return route.fulfill({status,contentType:'application/json',headers:{'X-Banking-Mode':mode,'Cache-Control':'no-store, private'},body:JSON.stringify(body)});
    }
    if(u.pathname.startsWith('/advisor/'))return route.fulfill({contentType:'application/json',body:'{}'});
    const file=path.resolve(root,'.'+(u.pathname==='/'?'/index.html':u.pathname));if(!file.startsWith(root+path.sep))return route.abort();
    try{return route.fulfill({body:await fs.readFile(file),headers:{'Content-Security-Policy':csp},contentType:({'.js':'text/javascript','.css':'text/css','.html':'text/html','.webp':'image/webp','.svg':'image/svg+xml'})[path.extname(file)]||'application/octet-stream'});}catch{return route.fulfill({status:404,body:''});}
   });
   const ready=async()=>{await page.waitForSelector('.page-head.scene-composed');await page.waitForFunction(()=>!document.querySelector('#main').hasAttribute('aria-busy'));};
-  const inspect=async label=>{const s=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth>innerWidth+1,csp:window.__csp||[],edges:[...document.querySelectorAll('#main *')].filter(el=>{const s=getComputedStyle(el);const sides=['Top','Right','Bottom','Left'].filter(k=>parseFloat(s['border'+k+'Width'])>0&&s['border'+k+'Style']!=='none');return sides.length>0&&sides.length<4;}).map(el=>el.className)}));assert.equal(s.overflow,false,label);assert.deepEqual(s.csp,[]);assert.deepEqual(s.edges,[],label);assert.deepEqual(errors,[]);await page.screenshot({path:path.join(out,`${label}-${width}-${theme}-${lang}.png`),fullPage:true});};
-  await page.goto(origin+'/#/accounts');await ready();assert.equal(await page.locator('.sidebar a[href="#/accounts"]').getAttribute('aria-current'),'page');await inspect('accounts');
-  await page.goto(origin+'/#/investments');await ready();await page.waitForSelector('#employee-stock-file');await inspect('empty-saxo-unavailable');
-  await page.locator('#manual-investment-add').click();await page.waitForSelector('#wealth-form');assert.equal(await page.locator('#wealth-form').count(),1);await page.locator('#overlay [data-action=close]').click();
-  const upload=()=>page.locator('#employee-stock-file').setInputFiles({name:'independent-synthetic.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:workbook});
-  await upload();await page.waitForSelector('#stock-cutoff');await page.locator('#stock-cutoff').fill('2026-10-16');
-  assert.equal(await page.locator('.stock-bar').count(),4);assert.match(await page.locator('#stock-chart').innerText(),/90[.,]375/);
-  await page.locator('.stock-bar').first().focus();await page.keyboard.press('Enter');assert.match(await page.locator('#stock-point').innerText(),/2026/);
-  await page.locator('#stock-price').fill('200');await page.locator('#stock-rate').fill('6.25');assert.doesNotMatch(await page.locator('#stock-chart').innerText(),/18[,. ]?075/);
-  await page.locator('#stock-observed').fill('2026-10-16');await page.locator('#stock-price-source').fill('Synthetic reviewed manual quote');assert.match(await page.locator('#stock-chart').innerText(),/18[,. ]?075/);
-  await inspect('preview');
-  await page.locator('#stock-price').fill('1000001');assert.equal(await page.locator('#stock-price').evaluate(el=>el.validity.valid),false);assert.doesNotMatch(await page.locator('#stock-chart').innerText(),/18[,. ]?075|Infinity/);
-  await page.locator('#stock-price').fill('200');await page.locator('#stock-rate').fill('10001');assert.equal(await page.locator('#stock-rate').evaluate(el=>el.validity.valid),false);assert.doesNotMatch(await page.locator('#stock-chart').innerText(),/112[,. ]?968|Infinity/);
-  await page.locator('#stock-rate').fill('6.25');await page.locator('#stock-observed').fill('1899-01-01');assert.equal(await page.locator('#stock-observed').evaluate(el=>el.validity.valid),false);assert.doesNotMatch(await page.locator('#stock-chart').innerText(),/18[,. ]?075|Infinity/);
-  await page.locator('#stock-observed').fill('2026-10-16');
-  const wrap=page.locator('.stock-table-wrap').first();await wrap.focus();await page.keyboard.press('ArrowRight');assert.equal(await wrap.getAttribute('tabindex'),'0');
-  const select=page.locator('#inv-environment');await select.selectOption('LIVE');assert.equal(await page.locator('#stock-cutoff').count(),1);assert.equal(await page.locator('#employee-stock-file').isEnabled(),true);
-  // New malformed preview clears prior successful facts, and a retry still works.
-  fail=true;await upload();await page.waitForFunction(()=>document.querySelector('#employee-stock-status').textContent.includes('STOCK_INVALID_WORKBOOK'));assert.equal(await page.locator('#stock-chart').count(),0);
-  fail=false;await upload();await page.waitForSelector('#stock-chart');
-  // Navigate during a response: no workbook facts/caches can leak to another route/workspace.
-  slow=true;await upload();await page.goto(origin+'/#/accounts');await ready();assert.equal(await page.locator('#stock-chart').count(),0);
-  await page.goto(origin+'/#/investments');await ready();assert.equal(await page.locator('#stock-chart').count(),0);
-  if(width<=900)await page.locator('[data-action=more]').click();await page.locator('.account-menu summary:visible').click();await page.locator('[data-action=logout]:visible').click();await page.locator('#access-demo').click();await page.waitForURL('**/#/overview');
-  await page.goto(origin+'/#/investments');await ready();assert.equal(await page.locator('#employee-stock-file').count(),0);assert.equal(await page.locator('#stock-chart').count(),0);
-  assert.ok(uploadCalls>=3);assert.ok(writes.every(p=>['employee-stocks/preview','browser/logout','browser/demo'].includes(p)));await inspect('demo-isolated');count++;await context.close();
+  const inspect=async label=>{const state=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth>innerWidth+1,csp:window.__csp||[],edges:[...document.querySelectorAll('#main *')].filter(el=>{const s=getComputedStyle(el),n=['Top','Right','Bottom','Left'].filter(k=>parseFloat(s['border'+k+'Width'])>0&&s['border'+k+'Style']!=='none').length;return n>0&&n<4;}).map(el=>el.className)}));assert.equal(state.overflow,false,label);assert.deepEqual(state.csp,[]);assert.deepEqual(state.edges,[],label);assert.deepEqual(errors,[]);await page.screenshot({path:path.join(out,`${label}-${width}-${theme}-${lang}.png`),fullPage:true});};
+  const upload=async index=>{await page.locator('#employee-stock-file').setInputFiles({name:'fictional-export.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:files[index===3?0:index]});await page.waitForSelector('#stock-review-form');};
+  const approve=async(index)=>{const form=page.locator('#stock-review-form'),day=index===0?'2026-10-01':'2026-10-15';await form.locator('[name=profile]').check();await form.locator('[name=reportDate]').fill(day);await form.locator('[name=heldState]').selectOption('zero');await form.locator('[name=heldDate]').fill(day);await form.locator('[name=confirmHeld]').check();if(index===1)await form.locator('[name=archived]').check();await form.locator('[name=warnings]').check();await form.locator('[name=confirm]').check();await form.locator('[type=submit]').click();await page.waitForFunction(()=>!document.querySelector('#stock-review-form'));await page.waitForFunction(()=>/Approved snapshot saved|Godkendt øjebliksbillede gemt/.test(document.querySelector('#employee-stock-status').textContent));};
+  await page.goto(origin+'/#/accounts');await ready();await inspect('accounts');await page.goto(origin+'/#/investments');await ready();await page.waitForSelector('#employee-stock-file');await inspect('empty-saxo-unavailable');
+  await page.locator('#manual-investment-add').click();await page.waitForSelector('#wealth-form');await page.locator('#overlay [data-action=close]').click();
+  await upload(0);assert.equal(approved,0);assert.equal(await page.locator('#stock-review-form [name=wealth]').isDisabled(),true);await page.locator('#stock-cutoff').fill('2026-10-16');assert.match(await page.locator('#stock-chart').innerText(),/90[.,]375/);await page.locator('#stock-live-quote').click();await page.waitForFunction(()=>/unavailable|utilgængelig/.test(document.querySelector('#stock-quote-status').textContent));assert.match(await page.locator('#stock-chart').innerText(),/90[.,]375/);await inspect('pending-review');
+  await approve(0);assert.equal(approved,1);assert.match(await page.locator('#stock-current').innerText(),/0/);
+  // A valid fixed LIVE research quote is view-only even while portfolio/history are unavailable.
+  quoteAvailable=true;await page.locator('#stock-live-quote').click();await page.waitForFunction(()=>document.querySelector('#stock-price').value==='241');assert.match(await page.locator('#stock-quote-status').innerText(),/15 min/);assert.equal(await page.locator('#stock-rate').inputValue(),'');assert.equal(approved,1);
+  // View controls on an approved receipt never mark the report dirty.
+  await page.locator('#stock-cutoff').fill('2026-10-16');await page.locator('.stock-bar').first().focus();await page.keyboard.press('Enter');
+  await page.locator('#stock-price').fill('200');await page.locator('#stock-rate').fill('6.25');await page.locator('#stock-observed').fill('2026-10-01');await page.locator('#stock-price-source').fill('Synthetic price');assert.doesNotMatch(await page.locator('#stock-chart').innerText(),/112[,. ]?968/);await page.locator('#stock-fx-observed').fill('2026-10-02');await page.locator('#stock-fx-source').fill('Synthetic rate');assert.match(await page.locator('#stock-chart').innerText(),/112[,. ]?968/);
+  await page.locator('#stock-price').fill('1000001');assert.doesNotMatch(await page.locator('#stock-chart').innerText(),/Infinity|18[,. ]?075/);await page.locator('#stock-price').fill('200');
+  const downloadPromise=page.waitForEvent('download');await page.locator('#stock-original').click();const downloaded=await downloadPromise;assert.deepEqual(await fs.readFile(await downloaded.path()),files[0]);
+  await (width<=900?page.locator('.bottom-nav a[href="#/accounts"]'):page.locator('.sidebar a[href="#/accounts"]')).click();await page.waitForSelector('.atlas-workspace');await ready();assert.equal(await page.locator('#overlay[open]').count(),0);assert.equal(await page.locator('#stock-chart').count(),0);
+  await page.goto(origin+'/#/investments');await ready();await page.waitForSelector('#stock-source-facts');assert.equal(await page.locator('#stock-review-form').count(),0);
+  await upload(1);await approve(1);await page.locator('#stock-history').evaluate(el=>el.open=true);assert.equal(await page.locator('#stock-history-list [data-stock-upload]').count(),2);assert.equal(await page.locator('#stock-history-values tbody tr').count(),2);
+  const archived=page.locator('#stock-source-facts > details');assert.equal(await archived.getAttribute('open'),null);await archived.locator(':scope > summary').click();await inspect('approved-archived-history');
+  await page.locator('.stock-table-wrap').first().focus();await page.keyboard.press('ArrowRight');
+  // Source-backed correction preserves the prior snapshot; an identical original then links without another point.
+  await upload(2);const correction=page.locator('#stock-review-form');await correction.locator('[name=profile]').check();await correction.locator('[name=reportDate]').fill('2026-10-15');await correction.locator('[name=archived]').check();await correction.locator('[name=warnings]').check();await correction.locator('[name=confirm]').check();await correction.locator('[type=submit]').click();await page.waitForSelector('#stock-compare');await page.locator('#stock-compare').click();await page.waitForFunction(()=>document.querySelector('#stock-prior').textContent.includes('0'));await correction.locator('[name=correct]').check();await correction.locator('[type=submit]').click();await page.waitForFunction(()=>!document.querySelector('#stock-review-form'));await page.waitForFunction(()=>/Approved snapshot saved|Godkendt øjebliksbillede gemt/.test(document.querySelector('#employee-stock-status').textContent));
+  assert.equal(approved,3);assert.equal(await page.locator('#stock-history-values tbody tr').count(),2);
+  await upload(3);await page.locator('#stock-reuse').click();await page.waitForFunction(()=>!document.querySelector('#stock-review-form'));await page.waitForFunction(()=>/Receipt linked|Uploadpost tilknyttet/.test(document.querySelector('#employee-stock-status').textContent));assert.equal(linked,true);assert.equal(await page.locator('#stock-history-values tbody tr').count(),2);assert.equal(await page.locator('#stock-history-list [data-stock-upload]').count(),4);await inspect('correction-and-duplicate');
+  await page.locator('#inv-environment').selectOption('LIVE');assert.equal(await page.locator('#stock-history-list [data-stock-upload]').count(),4);assert.equal(await page.locator('#employee-stock-file').isEnabled(),true);
+  // Pending owner result cannot survive real Sign out / Try Demo flow.
+  slow=true;await page.locator('#employee-stock-file').setInputFiles({name:'fictional-export.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:files[0]});
+  if(width<=900)await page.locator('[data-action=more]').click();await page.locator('.account-menu summary:visible').click();await page.locator('[data-action=logout]:visible').click();await page.locator('#access-demo').click();await page.waitForURL('**/#/overview');await page.goto(origin+'/#/investments');await ready();
+  assert.equal(await page.locator('#employee-stock-file').count(),0);assert.equal(await page.locator('#stock-source-facts').count(),0);assert.equal(await page.locator('#stock-history-list').count(),0);
+  assert.ok(requests.filter(([method])=>method!=='GET').every(([,p])=>p==='employee-stocks/uploads'||p.endsWith('/approve')||p.endsWith('/link')||p==='browser/logout'||p==='browser/demo'));await inspect('demo-cleared');cases++;await context.close();
  }
- console.log(JSON.stringify({passed:count,viewports:[1440,1024,390],themes:['light','graphite'],languages:['en','da'],actualOwnerFileTested:false,financialWrites:0}));
+ console.log(JSON.stringify({passed:cases,viewports:[1440,1024,390],themes:['light','graphite'],languages:['en','da'],dtoSource:'Real C# synthetic service receipts/snapshots/history',actualOwnerFileTested:false,productionWrites:0}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

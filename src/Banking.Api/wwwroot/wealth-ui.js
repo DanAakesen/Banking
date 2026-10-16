@@ -1,4 +1,4 @@
-import {mountEmployeeStockPreview} from './employee-stock-ui.js';
+import {mountEmployeeStockHistory} from './employee-stock-history-ui.js';
 import {mountPensionImports} from './pension-import-ui.js';
 import {beginSaxoSignIn,finishSaxoSignIn,saxoEnvironment,rememberSaxoEnvironment,saxoAuthKind,saxoAuthStatus,saxoAuthView,saxoAuthMarkup,saxoAuthApply,saxoDelayLabel,saxoResponseMeta,saxoRetainedSnapshot,saxoUpdateFailed,saxoClock,saxoGapNote,saxoLivePoll,SAXO_SHORT_RANGES,SAXO_LIVE_REFRESH_MS} from './saxo-session.js';
 // Legacy JSON preview helper; retained uploads use the private pension history endpoint.
@@ -34,10 +34,11 @@ export function createWealthUI({S,t,e,money,date,today,api,post,header,input,but
   if(kind==='Investment'){
    const seq=S.seq;const broker=investments.render(main).catch(err=>{if(seq===S.seq&&main.isConnected)main.querySelector('.inv-workspace').textContent=errorText(err);});if(seq!==S.seq||!main.isConnected)return;
    main.insertAdjacentHTML('beforeend','<section id="employee-stock-preview"></section><section id="manual-investments" class="loan-card"><h2>'+L('Other recorded investments','Andre registrerede investeringer')+'</h2><div id="manual-investment-values"></div><button id="manual-investment-add" type="button">+ '+L('Add statement value','Tilføj værdi fra opgørelse')+'</button></section>');
-   disposeEmployeeStock=mountEmployeeStockPreview(main.querySelector('#employee-stock-preview'),{S,e,money,date,today,api});
+   disposeEmployeeStock=mountEmployeeStockHistory(main.querySelector('#employee-stock-preview'),{S,e,money,date,today,api,post,navigate,leave,errorText});
    main.querySelector('#manual-investment-add').onclick=()=>edit('Investment');
    try{const all=await api('wealth');if(seq!==S.seq||!main.isConnected)return;records=all.filter(x=>x.kind==='Investment');
-    main.querySelector('#manual-investment-values').innerHTML=records.map(x=>`<div class="wealth-row"><div><strong>${e(x.name)}</strong><small>${e(x.provider)} · ${date(x.asOf)}</small></div><strong>${money(x.value,x.currency)}</strong><button data-manual-edit="${e(x.id)}">${t('Edit')}</button></div>`).join('')||'<p>'+L('No external statement values recorded. An empty list can be correct.','Ingen eksterne opgørelsesværdier registreret. En tom liste kan være korrekt.')+'</p>';
+    main.querySelector('#manual-investment-values').innerHTML=records.map(x=>`<div class="wealth-row"><div><strong>${e(x.name)}</strong><small>${e(x.provider)} · ${date(x.asOf)}</small></div><strong>${money(x.value,x.currency)}</strong>${x.managedBy==='EmployeeStockImport'?`<button data-manual-stock-review>${L('Review employee report','Gennemgå medarbejderrapport')}</button>`:`<button data-manual-edit="${e(x.id)}">${t('Edit')}</button>`}</div>`).join('')||'<p>'+L('No external statement values recorded. An empty list can be correct.','Ingen eksterne opgørelsesværdier registreret. En tom liste kan være korrekt.')+'</p>';
+    main.querySelectorAll('[data-manual-stock-review]').forEach(b=>b.onclick=()=>main.querySelector('#employee-stock-preview').scrollIntoView({block:'start'}));
     main.querySelectorAll('[data-manual-edit]').forEach(b=>b.onclick=()=>edit('Investment',records.find(x=>x.id===b.dataset.manualEdit)));
    }catch(err){if(seq===S.seq&&main.isConnected)main.querySelector('#manual-investment-values').textContent=errorText(err);}await broker;return;
   }

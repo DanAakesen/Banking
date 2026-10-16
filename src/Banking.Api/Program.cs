@@ -91,6 +91,7 @@ builder.Services.AddScoped<LoanService>();
 builder.Services.AddScoped<WealthService>();
 builder.Services.AddSingleton<IPensionPdfReader, PensionPdfReader>();
 builder.Services.AddScoped<PensionImportService>();
+builder.Services.AddScoped<EmployeeStockImportService>();
 builder.Services.AddScoped<ResearchService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<IMarketDataProvider, SaxoMarketDataProvider>(c => c.Timeout = TimeSpan.FromSeconds(20)).AddHttpMessageHandler<SaxoBudgetHandler>()

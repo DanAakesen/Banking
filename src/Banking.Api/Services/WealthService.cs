@@ -17,6 +17,7 @@ public sealed class WealthRecord : Entity
     public int? RetirementAge { get; set; }
     [System.Text.Json.Serialization.JsonIgnore] public string? PensionSourceKey { get; set; }
     [System.Text.Json.Serialization.JsonIgnore] public string? StockSourceKey { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped] public string? ManagedBy => StockSourceKey is null ? null : "EmployeeStockImport";
 }
 public sealed record WealthInput(string Name, string Provider, string Kind, decimal Value, string Currency, DateOnly AsOf,
     string SourceNote, decimal? AnnualPension = null, int? RetirementAge = null, string? Version = null);
@@ -68,6 +69,7 @@ public sealed class WealthService(BankingDb db, TimeProvider clock, Workspace wo
         Validate(input, clock);
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
         var row=id.HasValue?await db.WealthRecords.SingleOrDefaultAsync(x=>x.Id==id,ct)??throw new ApiFailure(404,"VALUATION_NOT_FOUND"):new WealthRecord();
+        if(row.StockSourceKey is not null)throw new ApiFailure(409,"EMPLOYEE_STOCK_REVIEW_REQUIRED");
         // One current snapshot per named product, updated in place rather than summed across dates.
         if(await db.WealthRecords.AnyAsync(x=>x.Provider==input.Provider.Trim()&&x.Name==input.Name.Trim()&&x.Kind==input.Kind&&x.Id!=row.Id,ct))
             throw new ApiFailure(409,"VALUATION_ALREADY_EXISTS_EDIT_IT");
@@ -80,6 +82,7 @@ public sealed class WealthService(BankingDb db, TimeProvider clock, Workspace wo
     public async Task Delete(Guid id,string version,CancellationToken ct)
     {
         var row=await db.WealthRecords.SingleOrDefaultAsync(x=>x.Id==id,ct)??throw new ApiFailure(404,"VALUATION_NOT_FOUND");
+        if(row.StockSourceKey is not null)throw new ApiFailure(409,"EMPLOYEE_STOCK_REVIEW_REQUIRED");
         GoalService.Version(db,row,version);db.WealthRecords.Remove(row);await db.SaveChangesAsync(ct);
     }
     public async Task<object> Summary(string currency,CancellationToken ct)
