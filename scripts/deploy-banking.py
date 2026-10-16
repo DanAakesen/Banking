@@ -39,6 +39,8 @@ SCM_URL = f"https://{APP}.scm.azurewebsites.net"
 MAX_SITE_ZIP = 512 * 1024 * 1024
 POLL_SECONDS = 5
 DEPLOY_TIMEOUT_SECONDS = 900
+HOSTED_READINESS_SECONDS = 600
+HOSTED_PROBE_SECONDS = 30
 SCHEMA_RESULT_TTL_SECONDS = 180
 CAPTURE_PHASES = frozenset({
     "capture-artifact", "capture-azure-context", "capture-baseline", "capture-token",
@@ -259,7 +261,7 @@ def request(
     token: str | None = None,
     body: bytes | None = None,
     content_type: str | None = None,
-    timeout: int = 90,
+    timeout: float = 90,
     max_bytes: int = MAX_SITE_ZIP,
     allow_http_error: bool = False,
 ) -> tuple[int, bytes, Any]:
@@ -335,8 +337,8 @@ def get_json(url: str, token: str | None = None) -> dict[str, Any]:
     return value
 
 
-def app_json(path: str) -> tuple[dict[str, Any], Any]:
-    status, data, headers = request("GET", APP_URL + path, max_bytes=4 * 1024 * 1024)
+def app_json(path: str, *, timeout_seconds: float = 90) -> tuple[dict[str, Any], Any]:
+    status, data, headers = request("GET", APP_URL + path, timeout=timeout_seconds, max_bytes=4 * 1024 * 1024)
     if status != 200:
         raise ReleaseError(f"Hosted read-only check {path} returned HTTP {status}.")
     try:
@@ -619,25 +621,107 @@ def verify_runtime_files(token: str, manifest: dict[str, Any]) -> dict[str, str]
     return hashes
 
 
-def verify_hosted(package: Path, manifest: dict[str, Any], expected_build: str, repo: Path,
-                  check_csp: bool = True) -> dict[str, Any]:
-    deadline = time.monotonic() + 180
-    while True:
-        try:
-            health, _ = app_json("/health")
-            runtime, _ = app_json("/api/runtime-info")
-            if (
-                health.get("status") == "running"
-                and health.get("environment") == "azure"
-                and runtime.get("backend") == "azure"
-                and runtime.get("build") == expected_build
-            ):
-                break
-        except ReleaseError:
-            pass
+def wait_for_hosted_runtime(expected_build: str, phase: str, started: float,
+                            evidence: dict[str, Any], rollback_assets: dict[str, str] | None = None
+                            ) -> tuple[dict[str, Any], dict[str, Any]]:
+    if phase not in {"hosted-readiness", "rollback-readiness"}:
+        raise ReleaseError("Unknown readiness phase.")
+    deadline = started + HOSTED_READINESS_SECONDS
+    evidence.clear()
+    evidence.update(phase=phase, startedAt=utc_now(), budgetSeconds=HOSTED_READINESS_SECONDS,
+                    polls=0, healthReads=0, runtimeReads=0, assetReads=0,
+                    outcome="pending", lastOutcome="not-started")
+    previous = CURRENT_PHASE.set(phase)
+
+    def probe() -> tuple[dict[str, Any], dict[str, Any]] | None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            evidence["lastOutcome"] = "health-probe-deadline"
+            return None
+        evidence["lastOutcome"] = "health-read-failed"
+        evidence["healthReads"] += 1
+        health, _ = app_json("/health", timeout_seconds=min(HOSTED_PROBE_SECONDS, remaining))
         if time.monotonic() >= deadline:
-            raise ReleaseError("Hosted health/runtime did not reach the expected release within 180 seconds.")
-        time.sleep(POLL_SECONDS)
+            evidence["lastOutcome"] = "late-health-response"
+            return None
+        if health.get("status") != "running" or health.get("environment") != "azure":
+            evidence["lastOutcome"] = "health-not-running-in-azure"
+            return None
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            evidence["lastOutcome"] = "runtime-probe-deadline"
+            return None
+        evidence["lastOutcome"] = "runtime-read-failed"
+        evidence["runtimeReads"] += 1
+        runtime, _ = app_json("/api/runtime-info", timeout_seconds=min(HOSTED_PROBE_SECONDS, remaining))
+        build = runtime.get("build")
+        # Runtime responses may contain arbitrary strings. Only this approved source-build
+        # syntax can enter readiness evidence; never include any other body fields or errors.
+        if isinstance(build, str) and re.fullmatch(r"git-[0-9a-f]{40}", build):
+            evidence["lastObservedBuild"] = build
+        else:
+            evidence.pop("lastObservedBuild", None)
+        if time.monotonic() >= deadline:
+            evidence["lastOutcome"] = "late-runtime-response"
+            return None
+        if runtime.get("backend") != "azure":
+            evidence["lastOutcome"] = "runtime-not-azure"
+            return None
+        if build != expected_build:
+            evidence["lastOutcome"] = "runtime-build-mismatch"
+            return None
+        for name, digest in (rollback_assets or {}).items():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                evidence["lastOutcome"] = "rollback-asset-deadline"
+                return None
+            evidence["lastOutcome"] = "rollback-asset-read-failed"
+            evidence["assetReads"] += 1
+            status, body, _ = request("GET", APP_URL + "/" + urllib.parse.quote(name),
+                                     timeout=min(90, remaining), max_bytes=32 * 1024 * 1024)
+            if time.monotonic() >= deadline:
+                evidence["lastOutcome"] = "late-rollback-asset-response"
+                return None
+            if status != 200 or hashlib.sha256(body).hexdigest() != digest:
+                evidence["lastOutcome"] = "rollback-asset-mismatch"
+                return None
+        evidence["lastOutcome"] = "expected-build-ready"
+        return health, runtime
+
+    try:
+        while time.monotonic() < deadline:
+            evidence["polls"] += 1
+            try:
+                result = probe()
+                if result is not None:
+                    if time.monotonic() < deadline:
+                        evidence["outcome"] = "succeeded"
+                        return result
+                    evidence["lastOutcome"] = "late-readiness-proof"
+            except ReleaseError:
+                pass  # request() already emits fixed endpoint/status/category diagnostics only.
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                time.sleep(min(POLL_SECONDS, remaining))
+        evidence["outcome"] = "timed-out"
+        raise ReleaseError(f"{phase} did not verify the expected build, Azure health and required assets within {HOSTED_READINESS_SECONDS} seconds.")
+    except Exception:
+        if evidence["outcome"] == "pending":
+            evidence["outcome"] = "failed"
+        raise
+    finally:
+        evidence["elapsedMs"] = round((time.monotonic() - started) * 1000)
+        evidence["finishedAt"] = utc_now()
+        diagnostic("readiness-phase", **evidence)
+        CURRENT_PHASE.reset(previous)
+
+
+def verify_hosted(package: Path, manifest: dict[str, Any], expected_build: str, repo: Path,
+                  check_csp: bool = True, *, readiness_started: float | None = None,
+                  readiness_evidence: dict[str, Any] | None = None) -> dict[str, Any]:
+    started = time.monotonic() if readiness_started is None else readiness_started
+    health, runtime = wait_for_hosted_runtime(expected_build, "hosted-readiness", started,
+                                             readiness_evidence if readiness_evidence is not None else {})
 
     # This checks that private account data remains authenticated without requesting any data.
     status, _, _ = request(
@@ -994,13 +1078,17 @@ def publish(args: argparse.Namespace) -> dict[str, Any]:
         if not is_success(new_deployment):
             raise ReleaseError("App Service reported that the new deployment failed.")
         result["runtimeFilesVerified"] = verify_runtime_files(token, manifest)
+        result["controlledRestartRequestedAt"] = utc_now()
         run_az(
             "webapp", "restart", "--resource-group", RESOURCE_GROUP,
             "--name", APP, "--output", "none",
         )
+        readiness_started = time.monotonic()
+        result["controlledRestartCompletedAt"] = utc_now()
         result["controlledRestartIssued"] = True
         result["postDeploy"] = verify_hosted(
-            package, manifest, manifest["build"], Path(args.repo), check_csp=True
+            package, manifest, manifest["build"], Path(args.repo), check_csp=True,
+            readiness_started=readiness_started, readiness_evidence=result.setdefault("hostedReadiness", {}),
         )
         result["outcome"] = "succeeded"
         result["finishedAt"] = utc_now()
@@ -1023,7 +1111,7 @@ def publish(args: argparse.Namespace) -> dict[str, Any]:
             result["failedDeploymentStatus"] = latest.get("status")
             # A terminal failed ZipDeploy may have partially changed wwwroot too.
             try:
-                result["rollbackVerification"] = restore_remote_backup(token, snapshot)
+                result["rollbackVerification"] = restore_remote_backup(token, snapshot, evidence=result)
                 result["rollbackOutcome"] = "succeeded"
             except Exception as rollback_exc:
                 result["rollbackOutcome"] = "failed"
@@ -1039,22 +1127,16 @@ def publish(args: argparse.Namespace) -> dict[str, Any]:
         raise ReleaseError("Release gates failed; see sanitized release evidence and rollback status.") from exc
 
 
-def verify_rollback(snapshot: dict[str, Any]) -> dict[str, Any]:
-    health, _ = app_json("/health")
-    runtime, _ = app_json("/api/runtime-info")
-    if health.get("status") != "running" or health.get("environment") != "azure":
-        raise ReleaseError("Restored application failed its health check.")
-    if runtime.get("build") != snapshot["previousBuild"]:
-        raise ReleaseError("Restored runtime build does not match the captured prior build.")
+def verify_rollback(snapshot: dict[str, Any], *, readiness_started: float | None = None,
+                    readiness_evidence: dict[str, Any] | None = None) -> dict[str, Any]:
     assets = snapshot.get("rollbackAssets", {})
-    for name, digest in assets.items():
-        status, body, _ = request("GET", APP_URL + "/" + urllib.parse.quote(name), max_bytes=32 * 1024 * 1024)
-        if status != 200 or hashlib.sha256(body).hexdigest() != digest:
-            raise ReleaseError("Restored hosted assets do not match the captured hashes.")
+    started = time.monotonic() if readiness_started is None else readiness_started
+    health, runtime = wait_for_hosted_runtime(snapshot["previousBuild"], "rollback-readiness", started,
+                                             readiness_evidence if readiness_evidence is not None else {}, assets)
     return {"health": health.get("status"), "build": runtime.get("build"), "assetsVerified": sorted(assets)}
 
 
-def restore_remote_backup(token: str, snapshot: dict[str, Any]) -> dict[str, Any]:
+def restore_remote_backup(token: str, snapshot: dict[str, Any], *, evidence: dict[str, Any] | None = None) -> dict[str, Any]:
     backup = snapshot["rollbackLocation"]
     stage = f"/home/Banking/releases/restore-{snapshot['sourceSha']}"
     command = (
@@ -1065,14 +1147,13 @@ def restore_remote_backup(token: str, snapshot: dict[str, Any]) -> dict[str, Any
         f"cp -a {stage}/. /home/site/wwwroot/; test -s /home/site/wwwroot/Banking.Api.dll"
     )
     remote_command(token, command)
+    evidence = evidence if evidence is not None else {}
+    evidence["rollbackRestartRequestedAt"] = utc_now()
     run_az("webapp", "restart", "--subscription", SUBSCRIPTION, "--resource-group", RESOURCE_GROUP, "--name", APP, "--output", "none")
-    deadline = time.monotonic() + 180
-    while time.monotonic() < deadline:
-        try:
-            return verify_rollback(snapshot)
-        except ReleaseError:
-            time.sleep(POLL_SECONDS)
-    raise ReleaseError("Rollback files were restored, but prior health/build verification timed out.")
+    readiness_started = time.monotonic()
+    evidence["rollbackRestartCompletedAt"] = utc_now()
+    return verify_rollback(snapshot, readiness_started=readiness_started,
+                           readiness_evidence=evidence.setdefault("rollbackReadiness", {}))
 
 
 def write_result(directory: Path, result: dict[str, Any]) -> None:
