@@ -35,6 +35,7 @@ public sealed partial class EmployeeStockEndpointTests
             if(retained){
                 keeper=new Microsoft.Data.Sqlite.SqliteConnection("Data Source=stock-http-"+Guid.NewGuid()+";Mode=Memory;Cache=Shared;Pooling=False");await keeper.OpenAsync();
                 b.Services.AddScoped(s=>new Banking.Api.Data.BankingDb(PensionHistoryTests.Options(keeper.ConnectionString),s.GetRequiredService<Workspace>()));
+                b.Services.AddSingleton<Banking.Api.Providers.IMarketDataProvider>(new EmployeeStockDemoTests.CurrentMarket());
                 b.Services.AddScoped<EmployeeStockImportService>();b.Services.AddSingleton<TimeProvider>(new PensionHistoryTests.Clock());
                 await using var db=new Banking.Api.Data.BankingDb(PensionHistoryTests.Options(keeper));await db.Database.EnsureCreatedAsync();
             }

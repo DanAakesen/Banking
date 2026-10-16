@@ -36,7 +36,7 @@ for(const lang of ['en','da'])test(`historical money cells render currency marku
  const format=n=>new Intl.NumberFormat(lang==='da'?'da-DK':'en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
  // Same markup-producing formatter contract as app.js, rather than a plain-text test double.
  const money=(n,c)=>n==null?'—':`<span class="money">${format(n)}<span class="money-currency"> ${e(c)}</span></span>`;
- const field={value:'',valueAsNumber:NaN,validity:{valid:true}},chart={innerHTML:'',querySelectorAll:()=>[],querySelector:()=>({innerHTML:''})};
+ const field={value:'',valueAsNumber:NaN,validity:{valid:true}},chart={innerHTML:'',querySelectorAll:()=>[],querySelector:selector=>selector.includes(':focus')?null:({innerHTML:''})};
  const root={innerHTML:'',querySelector:id=>id==='#stock-live-quote'?null:id==='#stock-cutoff'?{...field,value:'2026-10-16'}:id==='#stock-chart'?chart:field,querySelectorAll:()=>[]};
  renderEmployeeStockReport(root,report,{S:{seq:1,mode:'Demo',owner:false,lang},e,money,date:x=>x,today:()=>'2026-10-16'});
  assert.ok(root.innerHTML.includes(`<td>${money(1234.5,'USD')}</td>`));
@@ -59,4 +59,28 @@ test('held illustration is independent of 360 inclusion, with known zero distinc
  assert.deepEqual(stockHoldingIllustration({...unmapped,includeInWealth:true},200,6.25),{usd:2500,dkk:15625});
  assert.deepEqual(stockHoldingIllustration(unmapped,NaN,NaN),{usd:null,dkk:null});assert.deepEqual(stockHoldingIllustration({...unmapped,currentHeldShares:null},200,6.25),{usd:null,dkk:null});
  assert.deepEqual(stockHoldingIllustration({...unmapped,currentHeldShares:0},NaN,NaN),{usd:0,dkk:0});
+});
+
+test('money line groups exact dates, preserves fractions/weekends and has no invented intermediate events',async()=>{
+ const {stockVestingLine}=await import('../../src/Banking.Api/wwwroot/employee-stock-ui.js');
+ const report={schedules:[{date:'2025-11-30',shares:5,matchedPastVesting:5},{date:'2026-10-16',shares:1.25,matchedPastVesting:0},{date:'2027-02-28',shares:2,matchedPastVesting:0},{date:'2027-02-28',shares:.75,matchedPastVesting:0}]};const before=JSON.stringify(report);
+ assert.deepEqual(stockVestingLine(report,'2026-10-16',200,6.25),[{date:'2026-10-16',shares:1.25,cumulativeShares:1.25,value:1562.5,cumulative:1562.5},{date:'2027-02-28',shares:2.75,cumulativeShares:4,value:3437.5,cumulative:5000}]);
+ assert.deepEqual(stockVestingLine(report,'2026-10-16',200,null,'USD').map(p=>p.value),[250,550]);assert.equal(stockVestingLine(report,'2026-10-16',200,null)[0].value,null);assert.equal(JSON.stringify(report),before);
+});
+test('market valuation validates FX orientation, quality/time state and retains USD independently',async()=>{
+ const {employeeStockMarket}=await import('../../src/Banking.Api/wwwroot/employee-stock-ui.js');const now=Date.parse('2026-10-16T12:00:00Z');
+ const stock={source:'Saxo LIVE',symbol:'MSFT:xnas',currency:'USD',assetType:'Stock',quoteStatus:'available',price:200,quoteTime:'2026-10-16T11:45:00Z',retrievedAt:'2026-10-16T11:59:00Z',quoteDelayMinutes:15};
+ const fx={source:'Saxo LIVE',baseCurrency:'USD',quoteCurrency:'DKK',basis:'provider-mid',status:'available',dkkPerUsd:6.25,observedAt:'2026-10-16T11:45:00Z',retrievedAt:'2026-10-16T11:59:00Z',delayMinutes:0};
+ assert.equal(employeeStockMarket({stock,fx},now).rate,6.25);
+ const unknownTime=employeeStockMarket({stock,fx:{...fx,observedAt:null,sourceTimeStatus:'not-reported',quoteQuality:'Indicative'}},now);assert.equal(unknownTime.rate,6.25);assert.equal(unknownTime.fx.observedAt,null);assert.notEqual(unknownTime.fx.retrievedAt,unknownTime.fx.observedAt);
+ for(const change of [{baseCurrency:'DKK',quoteCurrency:'USD'},{status:'denied'},{basis:'unknown'},{dkkPerUsd:0},{observedAt:'2026-10-01'},{retrievedAt:'2026-10-16T10:00:00Z'},{delayMinutes:-1}]){const result=employeeStockMarket({stock,fx:{...fx,...change}},now);assert.equal(result.price,200);assert.equal(result.rate,null);}
+ const weekend=employeeStockMarket({stock:{...stock,quoteTime:'2026-10-14T20:00:00Z',marketState:'Closed'},fx},now);assert.equal(weekend.price,200);assert.equal(weekend.quote.marketState,'Closed');
+ const stale=employeeStockMarket({stock:{...stock,quoteStatus:'stale'},fx:{...fx,status:'stale'}},now);assert.equal(stale.quote.stale,true);assert.equal(stale.fx.status,'stale');
+});
+test('market reads coalesce per workspace and refresh interval without reusing another workspace intent',async()=>{
+ const {readEmployeeStockMarket}=await import('../../src/Banking.Api/wwwroot/employee-stock-ui.js');let calls=0;const api=async path=>{assert.equal(path,'markets/employee-shares');calls++;return {stock:null};};
+ await Promise.all([readEmployeeStockMarket(api,'Live',1000),readEmployeeStockMarket(api,'Live',1001)]);assert.equal(calls,1);
+ await readEmployeeStockMarket(api,'Demo',1002);assert.equal(calls,2);await readEmployeeStockMarket(api,'Live',61001);assert.equal(calls,3);
+ let attempts=0;const reroute=async()=>{if(++attempts===1)throw {stale:true};return {stock:null};};await assert.rejects(readEmployeeStockMarket(reroute,'Live',1000));await readEmployeeStockMarket(reroute,'Live',1001);assert.equal(attempts,2);
+ await readEmployeeStockMarket(api,'Live',61002,'new-route');assert.equal(calls,4);await readEmployeeStockMarket(api,'Live',61003,'new-route');assert.equal(calls,4);
 });

@@ -31,6 +31,7 @@ public static class PlanningEndpoints
             var market=SaxoEnvironment(environment,w,host);return market=="LIVE"?await client.Activity(ct,market):await orders.Orders(w,ct);});
         app.MapGet("/api/investments/saxo/orders/{id:guid}", (Guid id,string? environment,Banking.Api.Providers.SaxoOrders orders,Workspace w,IHostEnvironment host)=>{
             _=SaxoEnvironment(environment,w,host);Banking.Api.Providers.SaxoOrders.RequireSim(environment);return orders.Receipt(id,w);});
+        app.MapGet("/api/markets/employee-shares", (Banking.Api.Providers.IMarketDataProvider provider, CancellationToken ct) => provider.EmployeeShares(ct));
         app.MapGet("/api/markets/search", (string q, Banking.Api.Providers.IMarketDataProvider provider, CancellationToken ct) => provider.Search(q, ct));
         app.MapGet("/api/markets/chart", (string symbol, string range, Banking.Api.Providers.IMarketDataProvider provider, CancellationToken ct) => provider.Chart(symbol, range, ct));
         app.MapGet("/api/research", (ResearchService service,CancellationToken ct)=>service.List(ct));

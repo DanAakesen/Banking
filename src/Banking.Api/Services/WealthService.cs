@@ -31,7 +31,7 @@ public sealed class WealthService(BankingDb db, TimeProvider clock, Workspace wo
         var records = await List(ct);
         // Explicit synthetic visualization data only in Demo. No provider performance claims.
         if (workspace.Mode != "Demo") return new { records, visuals = (object?)null };
-        var investments = records.Where(x => x.Kind == "Investment" && x.Currency == currency).ToArray();
+        var investments = records.Where(x => x.Kind == "Investment" && x.Currency == currency && x.StockSourceKey == null).ToArray();
         var pensions = records.Where(x => x.Kind == "Pension" && x.Currency == currency).ToArray();
         var end = investments.Length > 0 ? investments.Min(x => x.AsOf) : DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         var value = investments.Sum(x => x.Value);

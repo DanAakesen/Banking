@@ -42,3 +42,11 @@ test('pension period shows deposits and growth for the selected dates',()=>{
  assert.ok(quarter.returns>month.returns);
  assert.equal(pensionPeriod(p,h,'2027-01-01','2027-02-01'),null);
 });
+
+test('current employee value replaces one explicit product without changing source history or adding conditional awards',async()=>{
+ const {employeeShare360Records}=await import('../../src/Banking.Api/wwwroot/overview.js');const records=[{id:'mapped',kind:'Investment',managedBy:'EmployeeStockImport',currency:'DKK',value:100},{id:'other',kind:'Investment',currency:'DKK',value:25}];
+ const p={mappedProductId:'mapped',includedInWealth:true,ownedDkk:150,ownedUsd:20,conditionalDkk:10000};
+ const projected=employeeShare360Records(records,p,'DKK');assert.equal(wealth360Model(10,projected,'DKK').values[1],175);assert.equal(records[0].value,100);
+ assert.equal(employeeShare360Records(records,{...p,includedInWealth:false},'DKK'),records);
+ assert.equal(wealth360Model(10,employeeShare360Records(records,{...p,ownedDkk:null},'DKK'),'DKK').values[1],null);
+});

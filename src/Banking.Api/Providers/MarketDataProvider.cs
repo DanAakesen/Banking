@@ -32,11 +32,12 @@ public sealed record MarketSnapshot(string Symbol, string Name, string Currency,
     decimal? PreviousClose, string Delay, MarketBar[] Bars, bool Stale = false, string? Warning = null,
     decimal? ChartDelayMinutes = null, decimal? QuoteDelayMinutes = null,
     string HistoryStatus = "available", string QuoteStatus = "available", DateTimeOffset? HistoryRetrievedAt = null,
-    string? AssetType = null, MarketDiagnostic[]? Diagnostics = null, MarketSampleSummary? HistorySamples = null);
+    string? AssetType = null, MarketDiagnostic[]? Diagnostics = null, MarketSampleSummary? HistorySamples = null, string? MarketState = null);
 public interface IMarketDataProvider
 {
     Task<MarketInstrument[]> Search(string query, CancellationToken ct);
     Task<MarketSnapshot> Chart(string symbol, string range, CancellationToken ct);
+    Task<EmployeeShareMarket> EmployeeShares(CancellationToken ct);
 }
 
 // Market research always uses Saxo LIVE. Trading/account environment is deliberately
@@ -346,6 +347,6 @@ public sealed partial class SaxoMarketDataProvider(HttpClient http, IMemoryCache
         var delayText="Chart: "+Delay(chartDelay)+"; quote: "+Delay(quoteDelay)+". Not an execution quote.";
         return new(instrument.Symbol,instrument.Name,currency??"Unknown",exchange??instrument.Exchange,range,Periods[range].Interval,"Saxo LIVE",
             "Last traded price; quote time is Saxo snapshot update time",retrieved,time,price,previousClose,delayText,bars,historyStatus=="stale",warning,
-            chartDelay,quoteDelay,historyStatus,quoteStatus,historyAt,instrument.Kind,diagnostics.Count>0?diagnostics.ToArray():null,samples);
+            chartDelay,quoteDelay,historyStatus,quoteStatus,historyAt,instrument.Kind,diagnostics.Count>0?diagnostics.ToArray():null,samples,quote is {} stateQuote?State(Child(stateQuote,"Quote")):null);
     }
 }

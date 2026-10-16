@@ -17,6 +17,29 @@ public sealed class EmployeeStockDemoTests
     internal static EmployeeStockReview Review(string variant,Guid? target=null,string? version=null){var (day,held,price,rate)=DemoEmployeeStockWorkbook.Values(variant);return new(day,true,held,day,true,false,null,price,day,DemoEmployeeStockWorkbook.Source,rate,day,DemoEmployeeStockWorkbook.Source,true,"DKK",target,version,true);}
     static async Task<EmployeeStockImportService> Demo(PensionHistoryTests.Fixture f)=>await Raw(f).ForSyntheticDemo(default);
     static async Task Seed(PensionHistoryTests.Fixture f){await f.Init("Demo");f.Db.Connections.Add(new(){Provider="product-demo",IsDemo=true});await f.Db.SaveChangesAsync();}
+    [Fact] public async Task CurrentMarketProjectionValuesHeldOnceAndLeavesAllAcceptedHistoryAndProductsUnchanged()
+    {
+        await using var f=new PensionHistoryTests.Fixture();await Seed(f);var service=await Demo(f);
+        var receipt=E(await service.UploadDemo("later",default));await service.Approve(receipt.GetProperty("id").GetGuid(),new(receipt.GetProperty("version").GetString()!,Review("later"),true,true),default);
+        var original=await f.Db.EmployeeStockSnapshots.AsNoTracking().Select(s=>s.DataJson).SingleAsync();
+        var product=await f.Db.WealthRecords.AsNoTracking().SingleAsync();var version=product.Version.ToArray();
+        var value=E((await service.CurrentValuation(new CurrentMarket(),default))!);
+        Assert.Equal(148750m,value.GetProperty("ownedDkk").GetDecimal());Assert.Equal(21250m,value.GetProperty("ownedUsd").GetDecimal());
+        Assert.Equal(532000m,value.GetProperty("conditionalDkk").GetDecimal());Assert.Equal(product.Id,value.GetProperty("mappedProductId").GetGuid());Assert.True(value.GetProperty("includedInWealth").GetBoolean());
+        var missing=E((await service.CurrentValuation(new CurrentMarket{FxAvailable=false},default))!);Assert.Equal(21250m,missing.GetProperty("ownedUsd").GetDecimal());Assert.Equal(JsonValueKind.Null,missing.GetProperty("ownedDkk").ValueKind);
+        f.Db.ChangeTracker.Clear();Assert.Equal(original,await f.Db.EmployeeStockSnapshots.Select(s=>s.DataJson).SingleAsync());var after=await f.Db.WealthRecords.SingleAsync();Assert.Equal(122825m,after.Value);Assert.Equal(version,after.Version);
+        var overview=E(await new WealthService(f.Db,new PensionHistoryTests.Clock(),f.Workspace,f.Service).Overview("DKK",default));Assert.Empty(overview.GetProperty("visuals").GetProperty("investment").GetProperty("history").EnumerateArray());Assert.Equal(JsonValueKind.Null,overview.GetProperty("visuals").GetProperty("investment").GetProperty("changePercent").ValueKind);
+        var serialized=value.GetRawText();foreach(var privateField in new[]{"protectedOriginal","sourceIdentityKey","dataJson","grants","transactions"})Assert.DoesNotContain(privateField,serialized);
+    }
+    internal sealed class CurrentMarket:IMarketDataProvider
+    {
+        public bool FxAvailable=true;
+        public Task<MarketInstrument[]> Search(string query,CancellationToken ct)=>throw new NotSupportedException();
+        public Task<MarketSnapshot> Chart(string symbol,string range,CancellationToken ct)=>throw new NotSupportedException();
+        public Task<EmployeeShareMarket> EmployeeShares(CancellationToken ct){var now=new PensionHistoryTests.Clock().GetUtcNow();return Task.FromResult(new EmployeeShareMarket(
+            new("MSFT:xnas","Microsoft","USD","xnas","1d","1m","Saxo LIVE","LastTraded",now,now,500,null,"",[],AssetType:"Stock"),
+            new("Saxo LIVE","USDDKK","USD","DKK","provider-mid",FxAvailable?7:null,now,now,0,FxAvailable?"available":"unavailable"),now));}
+    }
     [Theory]
     [InlineData("earlier",190,90,0)][InlineData("middle",168,100,12)][InlineData("later",152,110,18)]
     public void ThreeSheetOriginalHasDeterministicReconciledSourceFactsAndVariableSchedules(string variant,int unvested,int hireVested,int annualVested)

@@ -16,6 +16,17 @@ public sealed class EmployeeStockHistoryTests
         null,null,null,null,null,null,wealth,"DKK",null,null,wealth);
     static EmployeeStockApproval Approval(JsonElement receipt,EmployeeStockReview? review=null,Guid? prior=null)=>new(receipt.GetProperty("version").GetString()!,review??Review(),true,true,prior);
     static async Task<JsonElement> Upload(PensionHistoryTests.Fixture f,byte[]? bytes=null)=>E(await Service(f).Upload(bytes??SyntheticStockWorkbook.Create(),default));
+    [Theory][InlineData(true)][InlineData(false)]
+    public async Task CurrentProjectionKeepsConfirmedZeroDistinctFromUnknownWithoutWriting(bool knownZero)
+    {
+        decimal? held=knownZero?0m:null;
+        await using var f=new PensionHistoryTests.Fixture();await f.Init();var receipt=await Upload(f);
+        await Service(f).Approve(receipt.GetProperty("id").GetGuid(),Approval(receipt,Review(held)),default);
+        var value=E((await Service(f).CurrentValuation(new EmployeeStockDemoTests.CurrentMarket{FxAvailable=false},default))!);
+        if(held==0){Assert.Equal(0,value.GetProperty("ownedDkk").GetDecimal());Assert.Equal(0,value.GetProperty("ownedUsd").GetDecimal());}
+        else{Assert.Equal(JsonValueKind.Null,value.GetProperty("ownedDkk").ValueKind);Assert.Equal(JsonValueKind.Null,value.GetProperty("ownedUsd").ValueKind);}
+        Assert.Empty(await f.Db.WealthRecords.ToArrayAsync());Assert.Single(await f.Db.EmployeeStockSnapshots.ToArrayAsync());
+    }
     [Fact]
     public async Task EachUploadRetainsEncryptedOriginalAndReceiptButPreviewNeverCreatesFinancialState()
     {
