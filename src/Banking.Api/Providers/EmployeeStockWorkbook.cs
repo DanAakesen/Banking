@@ -24,7 +24,7 @@ public sealed record EmployeeStockReport(string ParserVersion, DateOnly? ReportA
 
 public static class EmployeeStockWorkbook
 {
-    public const string Version = "employee-stock-xlsx-1";
+    public const string Version = "employee-stock-xlsx-2";
     public const int MaxXmlNodes = 300000;
     public const int MaxBytes = 8 * 1024 * 1024, MaxExpanded = 32 * 1024 * 1024, MaxPart = 8 * 1024 * 1024;
     public static readonly string[][] Headers = [
@@ -75,9 +75,9 @@ public static class EmployeeStockWorkbook
             Require(!doc.Descendants().Any(e => e.Name.LocalName is "f" or "definedName" or "externalReference" or "ddeLink" or "oleObject"), "ACTIVE_CONTENT");
             if (name.EndsWith(".rels", StringComparison.OrdinalIgnoreCase))
                 Require(doc.Root?.Name == Rel + "Relationships" && doc.Root.Elements().All(e => e.Name == Rel + "Relationship" && ((string?)e.Attribute("TargetMode") is null or "Internal") && SafeTarget((string?)e.Attribute("Target"))), "EXTERNAL_LINK");
-            if (name == "[Content_Types].xml") Require(!doc.Descendants().Any(e => ((string?)e.Attribute("ContentType") ?? "").Contains("macro", StringComparison.OrdinalIgnoreCase)), "ACTIVE_CONTENT");
         }
         XDocument Part(string path) { Require(parts.ContainsKey(path), "PACKAGE_STRUCTURE"); return parts[path]; }
+        ValidateContentTypes(Part("[Content_Types].xml"), parts.Keys, budget);
         var rootRels = Part("_rels/.rels").Root!;
         var workbookLinks = rootRels.Elements(Rel + "Relationship").Where(e => (string?)e.Attribute("Type") == DocRel.NamespaceName + "/officeDocument").ToArray();
         Require(workbookLinks.Length == 1 && ((string?)workbookLinks[0].Attribute("Target"))?.TrimStart('/') == "xl/workbook.xml", "PACKAGE_STRUCTURE");
@@ -163,6 +163,37 @@ public static class EmployeeStockWorkbook
         warnings.Add(new("CURRENT_HOLDINGS_NOT_REPORTED")); warnings.Add(new("PROFILE_CURRENCY_AND_ISSUER_NOT_REPORTED")); warnings.Add(new("REPORT_DATE_NOT_REPORTED")); warnings.Add(new("TAX_OBSERVATIONS_NOT_TAX_SETTLEMENT"));
         return new(new EmployeeStockReport(Version, null, null, null, null, null, grants.ToArray(), schedules.ToArray(), transactions.ToArray(), warnings.Distinct().ToArray()),
             Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("employee-stock-identity-v1\0" + people[0]))).ToLowerInvariant());
+    }
+    static void ValidateContentTypes(XDocument document, IEnumerable<string> partNames, Action budget)
+    {
+        XNamespace types = "http://schemas.openxmlformats.org/package/2006/content-types";
+        Require(document.Root?.Name == types + "Types", "PACKAGE_STRUCTURE");
+        var usedExtensions = partNames.Select(name => Path.GetExtension(name).TrimStart('.')).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var defaults = new HashSet<string>(StringComparer.OrdinalIgnoreCase); var overrides = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var declaration in document.Root!.Elements())
+        {
+            budget(); var type = (string?)declaration.Attribute("ContentType");
+            Require(!declaration.HasElements && !string.IsNullOrWhiteSpace(type) && type.Length <= 256, "PACKAGE_STRUCTURE");
+            bool unusedDefault = false;
+            if (declaration.Name == types + "Default")
+            {
+                var extension = (string?)declaration.Attribute("Extension") ?? "";
+                Require(extension.Length is > 0 and <= 32 && extension.All(char.IsAsciiLetterOrDigit) && defaults.Add(extension), "PACKAGE_STRUCTURE");
+                unusedDefault = !usedExtensions.Contains(extension);
+            }
+            else
+            {
+                Require(declaration.Name == types + "Override", "PACKAGE_STRUCTURE");
+                var name = (string?)declaration.Attribute("PartName") ?? "";
+                Require(name.StartsWith('/') && SafePath(name[1..]) && overrides.Add(name), "PACKAGE_STRUCTURE");
+            }
+            // An unused Default cannot supply content to a real part. Keep every active Override
+            // and every active Default for an existing extension blocked, without resolving or executing anything.
+            bool active = type!.Contains("macro", StringComparison.OrdinalIgnoreCase) || type.Contains("vba", StringComparison.OrdinalIgnoreCase)
+                || type.Contains("activex", StringComparison.OrdinalIgnoreCase) || type.Contains("oleobject", StringComparison.OrdinalIgnoreCase)
+                || type.Contains("binary", StringComparison.OrdinalIgnoreCase);
+            Require(!active || unusedDefault, "ACTIVE_CONTENT");
+        }
     }
     static string Text(XElement element) => string.Concat(element.Descendants(Main + "t").Select(e => e.Value));
     static bool SafePath(string value) => value.Length is > 0 and <= 200 && !value.StartsWith('/') && !value.Contains('\\') && !value.Contains(':') && !value.Contains('%') && value.Split('/').All(p => p.Length > 0 && p is not "." and not "..");

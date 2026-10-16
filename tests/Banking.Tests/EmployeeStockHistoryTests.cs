@@ -49,7 +49,7 @@ public sealed class EmployeeStockHistoryTests
     [Fact]
     public async Task IdenticalReportAndReviewLinkCanonicalSnapshotButKeepBothUploadReceipts()
     {
-        await using var f=new PensionHistoryTests.Fixture();await f.Init();var one=await Upload(f);var two=await Upload(f);
+        await using var f=new PensionHistoryTests.Fixture();await f.Init();var bytes=SyntheticStockWorkbook.Create();var one=await Upload(f,bytes);var two=await Upload(f,bytes);
         var saved=E(await Service(f).Approve(one.GetProperty("id").GetGuid(),Approval(one),default));var duplicate=E(await Service(f).Approve(two.GetProperty("id").GetGuid(),Approval(two),default));
         Assert.True(duplicate.GetProperty("duplicate").GetBoolean());Assert.Equal(saved.GetProperty("snapshotId").GetGuid(),duplicate.GetProperty("snapshotId").GetGuid());
         Assert.Equal(2,await f.Db.EmployeeStockUploads.CountAsync());Assert.Equal(1,await f.Db.EmployeeStockSnapshots.CountAsync());Assert.Equal(1,E(await Service(f).History(0,default)).GetProperty("development").GetArrayLength());

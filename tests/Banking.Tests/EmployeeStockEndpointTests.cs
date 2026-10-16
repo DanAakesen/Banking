@@ -59,6 +59,7 @@ public sealed partial class EmployeeStockEndpointTests
         var response=await c.PostAsync("/api/employee-stocks/preview",Workbook());Assert.Equal(HttpStatusCode.OK,response.StatusCode);
         Assert.Contains("no-store",response.Headers.CacheControl!.ToString());Assert.Contains("private",response.Headers.CacheControl.ToString());
         var json=await response.Content.ReadAsStringAsync();using var doc=JsonDocument.Parse(json);
+        Assert.Equal(Banking.Api.Providers.EmployeeStockWorkbook.Version,doc.RootElement.GetProperty("parserVersion").GetString());
         Assert.Equal(2,doc.RootElement.GetProperty("grants").GetArrayLength());Assert.Equal(JsonValueKind.Null,doc.RootElement.GetProperty("currentHeldShares").ValueKind);
         foreach(var name in new[]{"FictionalFamily","FictionalGiven","00004123","00007321","Fictional Custodian","awardId","awardeeId","original","fileHash"})Assert.DoesNotContain(name,json);
         Assert.Equal(HttpStatusCode.MethodNotAllowed,(await c.GetAsync("/api/employee-stocks/preview")).StatusCode);
