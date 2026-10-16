@@ -96,7 +96,7 @@ async function overview(main, startup){
  let completed=0;
  const tracked = promise => promise.then(value=>{startup?.setProgress(25 + (++completed / 8) * 60);return value;});
  main.classList.add('panoramic-main');
- const r=range();const flowKey=S.overviewFlowPeriod||'1m';const flowRange={from:flowKey==='1w'?shift(today(),-6):shift(monthShift(today(),-({'1m':1,'3m':3,'6m':6,'1y':12}[flowKey]||1)),1),to:today()};window.dispatchEvent(new CustomEvent('banking:section-context',{detail:{section:'cashFlow',...flowRange,currency:S.currency}}));const flowInfoPromise=api(`account-insights?from=${flowRange.from}&to=${flowRange.to}&currency=${S.currency}`);const extra360=Promise.all([api('wealth/overview?currency='+S.currency).catch(()=>null),api(`cash-flow?from=${r.from}&to=${r.to}&currency=${S.currency}`).catch(()=>null)]);if(!main.querySelector('.page-head'))main.insertAdjacentHTML('beforeend',overviewHeader());if(!main.querySelector('#overview-data'))main.insertAdjacentHTML('beforeend',`<div id="overview-data"></div>`);
+ const r=range();const flowKey=S.overviewFlowPeriod||'1m';const flowRange={from:flowKey==='1w'?shift(today(),-6):shift(monthShift(today(),-({'1m':1,'3m':3,'6m':6,'1y':12}[flowKey]||1)),1),to:today()};window.dispatchEvent(new CustomEvent('banking:section-context',{detail:{section:'cashFlow',...flowRange,currency:S.currency}}));const flowInfoPromise=api(`account-insights?from=${flowRange.from}&to=${flowRange.to}&currency=${S.currency}`);const extra360=Promise.all([api('wealth/overview?currency='+S.currency).catch(()=>null),api(`cash-flow?from=${r.from}&to=${r.to}&currency=${S.currency}`).catch(()=>null),api((S.mode==='Demo'?'employee-stocks/demo/':'employee-stocks/')+'valuation').catch(()=>null)]);if(!main.querySelector('.page-head'))main.insertAdjacentHTML('beforeend',overviewHeader());if(!main.querySelector('#overview-data'))main.insertAdjacentHTML('beforeend',`<div id="overview-data"></div>`);
  const budgetData=budgetUI.loadOverview().then(value=>({value}),error=>({error}));
  const [trends,upcoming,goals,balances,info,review]=await Promise.all([api(`trends?from=${flowRange.from}&to=${flowRange.to}&currency=${S.currency}`),api(`upcoming-estimates?from=${today()}&days=7&currency=${S.currency}`),api('goals'),Promise.all(S.accounts.map(a=>api(`accounts/${a.id}/balances?limit=20`))),r.from===flowRange.from&&r.to===flowRange.to?flowInfoPromise:api(`account-insights?from=${r.from}&to=${r.to}&currency=${S.currency}`),api('review?limit=1')].map(tracked));
  S.upcoming=upcoming;S.overviewInfo=info;S.accountBalances=balances;
@@ -121,8 +121,8 @@ async function overview(main, startup){
  await mountOverviewAdvisor(data,{mode:S.mode,theme:S.theme,from:flowRange.from,to:flowRange.to,currency:S.currency,insights:advisorSignals.slice(0,2)});
  const loadedBudget=await budgetData;if(loadedBudget.error)throw loadedBudget.error;
  const budget=await budgetUI.overview(main,loadedBudget.value);
- const [wealth,flow]=await extra360;const records=wealth?.records??null,visuals=wealth?.visuals??null;
- if(data.isConnected)mount360(data,{S,t,e,money,date,icon,api},{selected,total,info,upcoming,range:r,records,visuals,budget,flow});
+ const [wealth,flow,employeeShares]=await extra360;const records=wealth?.records??null,visuals=wealth?.visuals??null;
+ if(data.isConnected)mount360(data,{S,t,e,money,date,icon,api},{selected,total,info,upcoming,range:r,records,visuals,budget,flow,employeeShares});
 }
 
 const colour=(id,kind='account')=>{if(!id)return 'tone-other';const ids=(kind==='category'?S.categories:S.accounts).map(x=>x.id).sort();const index=ids.indexOf(id);return index<0?'tone-other':'tone-'+(index%10);};

@@ -114,6 +114,29 @@ public sealed class EmployeeStockImportService(BankingDb db, Workspace workspace
         return new{row.Id,row.UploadId,row.AsOf,row.ApprovedAt,row.SupersedesId,accepted=JsonSerializer.Deserialize<EmployeeStockAccepted>(row.DataJson,Json)};
     }
     IQueryable<EmployeeStockSnapshot> Canonical()=>db.EmployeeStockSnapshots.AsNoTracking().Where(s=>db.EmployeeStockDocuments.Any(d=>d.Id==s.DocumentId&&(d.Synthetic==syntheticDemo))&&!db.EmployeeStockSnapshots.Any(n=>n.SupersedesId==s.Id));
+    // Read-only current-market display; accepted JSON, products and originals are never updated here.
+    public async Task<object?> CurrentValuation(Banking.Api.Providers.IMarketDataProvider provider,CancellationToken ct)
+    {
+        Owner();var latest=await Canonical().OrderByDescending(s=>s.AsOf).ThenByDescending(s=>s.ApprovedAt).FirstOrDefaultAsync(ct);
+        if(latest is null)return null;
+        var accepted=JsonSerializer.Deserialize<EmployeeStockAccepted>(latest.DataJson,Json)!;var r=accepted.Review;
+        Banking.Api.Providers.EmployeeShareMarket? market=null;
+        try{market=await provider.EmployeeShares(ct);}catch(ApiFailure){}catch(HttpRequestException){}
+        var now=clock.GetUtcNow();var q=market?.Stock;var fx=market?.Fx;
+        var price=q is {Source:"Saxo LIVE",Currency:"USD",AssetType:"Stock",Price:>0 and <=1000000,QuoteStatus:"available" or "stale",QuoteTime:not null}
+            &&q.Symbol=="MSFT:xnas"&&q.QuoteTime>=now.AddDays(-7)&&q.QuoteTime<=now.AddMinutes(1)&&q.RetrievedAt>=now.AddMinutes(-15)&&q.RetrievedAt<=now.AddMinutes(1)&&(q.QuoteDelayMinutes is null or >=0 and <=1440)?q.Price:null;
+        var rate=fx is{Status:"available" or "stale",Source:"Saxo LIVE",BaseCurrency:"USD",QuoteCurrency:"DKK",Basis:"provider-mid",DkkPerUsd:>0 and <=10000}
+            &&(fx.ObservedAt is not null&&fx.ObservedAt>=now.AddDays(-7)&&fx.ObservedAt<=now.AddMinutes(1)||fx.ObservedAt is null&&fx.SourceTimeStatus=="not-reported"&&fx.QuoteQuality is "Tradable" or "Indicative" or "OldIndicative")&&fx.RetrievedAt>=now.AddMinutes(-15)&&fx.RetrievedAt<=now.AddMinutes(1)&&(fx.DelayMinutes is null or >=0 and <=1440)?fx.DkkPerUsd:null;
+        decimal? Usd(decimal? shares)=>shares==0?0:shares*price;
+        decimal? Dkk(decimal? shares)=>shares==0?0:Usd(shares)*rate;
+        var mapping=await db.WealthRecords.AsNoTracking().SingleOrDefaultAsync(x=>x.StockSourceKey==Mapping,ct);
+        var unvested=r.Archived?(decimal?)null:accepted.Report.Grants.Sum(g=>g.Unvested);
+        return new{reportAsOf=r.ReportAsOf,holdingAsOf=r.HoldingAsOf,currentHeldShares=r.CurrentHeldShares,r.Archived,
+            ownedUsd=Usd(r.CurrentHeldShares),ownedDkk=Dkk(r.CurrentHeldShares),conditionalUsd=Usd(unvested),conditionalDkk=Dkk(unvested),
+            mappedProductId=mapping?.Id,includedInWealth=mapping is not null,market,
+            basis="Read-only indicative market value. Conditional awards excluded from owned wealth. Approved report valuations unchanged."};
+    }
+
     public async Task<object> History(int offset,CancellationToken ct)
     {
         Owner();Check.That(offset is >=0 and <=100000,"INVALID_OFFSET");

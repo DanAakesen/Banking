@@ -439,6 +439,66 @@ public sealed class SaxoMarketDataTests
         var result=Map(Quote.Replace("\"LastClose\":13","\"LastClose\":-1").Replace("\"DelayedByMinutes\":15","\"DelayedByMinutes\":-1"));
         Assert.Equal(15,result.ChartDelayMinutes);Assert.Null(result.QuoteDelayMinutes);Assert.Null(result.PreviousClose);Assert.Contains("quote: delay unknown",result.Delay);
     }
+    const string FxQuote="""{"AssetType":"FxSpot","Uic":987,"LastUpdated":"2026-09-28T14:00:00Z","DisplayAndFormat":{"Symbol":"USDDKK","Currency":"DKK"},"Quote":{"Mid":6.9,"Bid":6.89,"Ask":6.91,"PriceTypeBid":"Tradable","PriceTypeAsk":"Tradable","DelayedByMinutes":0,"MarketState":"Open"}}""";
+    [Theory]
+    [InlineData("USDDKK","DKK","FxSpot",987,6.9,true)]
+    [InlineData("DKKUSD","DKK","FxSpot",987,6.9,false)]
+    [InlineData("EURUSD","USD","FxSpot",987,6.9,false)]
+    [InlineData("USDDKK","USD","FxSpot",987,6.9,false)]
+    [InlineData("USDDKK","DKK","Stock",987,6.9,false)]
+    [InlineData("USDDKK","DKK","FxSpot",21,6.9,false)]
+    [InlineData("USDDKK","DKK","FxSpot",987,0,false)]
+    public void EmployeeFxRequiresTheResolvedPairCurrencyAssetUicAndPositiveProviderMid(string symbol,string currency,string asset,int uic,double mid,bool valid)
+    {
+        var body=FxQuote.Replace("USDDKK",symbol).Replace("\"Currency\":\"DKK\"","\"Currency\":\""+currency+"\"")
+            .Replace("FxSpot",asset).Replace("\"Uic\":987","\"Uic\":"+uic).Replace("\"Mid\":6.9","\"Mid\":"+mid.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        var fx=SaxoMarketDataProvider.MapEmployeeFx(Json(body),987,Now);
+        Assert.Equal(valid?6.9m:null,fx.DkkPerUsd);Assert.Equal(valid?"available":"mismatch",fx.Status);
+        Assert.Equal(("USD","DKK","provider-mid"),(fx.BaseCurrency,fx.QuoteCurrency,fx.Basis));
+    }
+    [Fact] public void EmployeeFxRejectsDeniedQualityAndFutureOldOrMissingTimestampsButKeepsMarketClosedObservation()
+    {
+        foreach(var body in new[]{FxQuote.Replace("Tradable","NoAccess"),FxQuote.Replace("2026-09-28T14:00:00Z","2026-09-30T14:00:00Z"),FxQuote.Replace("2026-09-28T14:00:00Z","2026-09-01T14:00:00Z"),FxQuote.Replace("2026-09-28T14:00:00Z","invalid-time")})
+            Assert.Null(SaxoMarketDataProvider.MapEmployeeFx(Json(body),987,Now).DkkPerUsd);
+        var closed=SaxoMarketDataProvider.MapEmployeeFx(Json(FxQuote.Replace("Open","Closed").Replace("2026-09-28T14:00:00Z","2026-09-25T14:00:00Z")),987,Now);
+        Assert.Equal(6.9m,closed.DkkPerUsd);Assert.Equal("Closed",closed.MarketState);
+    }
+    [Theory][InlineData(null)][InlineData("")][InlineData("0001-01-01T00:00:00Z")]
+    public void FreshAuthenticatedReferenceFxWithUnreportedTimeNeverInventsAnObservation(string? sourceTime)
+    {
+        var body=sourceTime is null?FxQuote.Replace("\"LastUpdated\":\"2026-09-28T14:00:00Z\",",""):FxQuote.Replace("2026-09-28T14:00:00Z",sourceTime);
+        var value=SaxoMarketDataProvider.MapEmployeeFx(Json(body.Replace("Tradable","Indicative")),987,Now);
+        Assert.Equal(6.9m,value.DkkPerUsd);Assert.Null(value.ObservedAt);Assert.Equal(Now,value.RetrievedAt);Assert.Equal("not-reported",value.SourceTimeStatus);Assert.Equal("Indicative",value.QuoteQuality);
+    }
+    [Fact] public async Task EmployeeMarketUsesReadOnlyLiveQuotesSharedCacheAndChecksAuthorizationBeforeCache()
+    {
+        using var f=new Fixture();var owner=f.Provider();var value=await owner.EmployeeShares(default);
+        Assert.Equal(14,value.Stock!.Price);Assert.Equal(6.9m,value.Fx.DkkPerUsd);Assert.Equal(4,f.Broker.Requests.Count);
+        var demo=f.Provider(new Workspace());Assert.Equal(value,await demo.EmployeeShares(default));Assert.Equal(4,f.Broker.Requests.Count);
+        Assert.All(f.Broker.Requests,r=>{Assert.Equal("GET",r.Method);Assert.Contains("gateway.saxobank.com/openapi/",r.Url);Assert.DoesNotContain("/chart/",r.Url);Assert.DoesNotContain("positions",r.Url);Assert.DoesNotContain("orders",r.Url);});
+        Assert.Contains(f.Broker.Requests,r=>r.Url.Contains("AssetTypes=FxSpot")&&r.Url.Contains("Keywords=USDDKK"));
+        Assert.Contains(f.Broker.Requests,r=>r.Url.Contains("AssetType=FxSpot&Uic=987"));
+        var privateJson=JsonSerializer.Serialize(value);Assert.DoesNotContain("private-account",privateJson);Assert.DoesNotContain("private-position",privateJson);
+        var anonymous=new Workspace();anonymous.Select("Live");await Assert.ThrowsAsync<ApiFailure>(()=>f.Provider(anonymous).EmployeeShares(default));Assert.Equal(4,f.Broker.Requests.Count);
+        f.Config["Saxo:LIVE:ReadEnabled"]="false";await Assert.ThrowsAsync<ApiFailure>(()=>owner.EmployeeShares(default));Assert.Equal(4,f.Broker.Requests.Count);
+    }
+    [Fact] public async Task SimultaneousEmployeeMarketReadsCoalesceIntoOneBoundedProviderBatch()
+    {using var f=new Fixture();f.Broker.DelayMs=10;await Task.WhenAll(Enumerable.Range(0,8).Select(_=>f.Provider().EmployeeShares(default)));Assert.Equal(4,f.Broker.Requests.Count);}
+    [Fact] public async Task EmployeeMarketDoesNotGuessAnAmbiguousFxListingOrCurrencyAndKeepsUsdIndependent()
+    {
+        using var f=new Fixture();f.Broker.FxListings="""{"Data":[{"Symbol":"EURUSD","AssetType":"FxSpot","Identifier":21}]}""";
+        var value=await f.Provider().EmployeeShares(default);Assert.Equal(14,value.Stock!.Price);Assert.Null(value.Fx.DkkPerUsd);
+        Assert.DoesNotContain(f.Broker.Requests,r=>r.Url.Contains("AssetType=FxSpot&Uic="));
+    }
+    [Fact] public async Task EmployeeMarketTransientIsStaleButExplicitDenialClearsTheRelevantPartAndNewTokenUsesFreshCache()
+    {
+        using var f=new Fixture();var p=f.Provider();await p.EmployeeShares(default);f.Clock.Now=f.Clock.Now.AddMinutes(2);
+        f.Broker.FxStatus=HttpStatusCode.ServiceUnavailable;var stale=await p.EmployeeShares(default);Assert.Equal("stale",stale.Fx.Status);Assert.Equal(6.9m,stale.Fx.DkkPerUsd);Assert.Equal(14,stale.Stock!.Price);
+        f.Clock.Now=f.Clock.Now.AddMinutes(2);f.Broker.FxStatus=HttpStatusCode.Forbidden;var denied=await p.EmployeeShares(default);Assert.Equal("denied",denied.Fx.Status);Assert.Null(denied.Fx.DkkPerUsd);
+        f.Clock.Now=f.Clock.Now.AddMinutes(2);f.Broker.FxStatus=HttpStatusCode.ServiceUnavailable;Assert.Null((await p.EmployeeShares(default)).Fx.DkkPerUsd);
+        var count=f.Broker.Requests.Count;f.Broker.FxStatus=HttpStatusCode.OK;f.WriteCredentials("new-synthetic-token");Assert.Equal(6.9m,(await p.EmployeeShares(default)).Fx.DkkPerUsd);Assert.Equal(count+4,f.Broker.Requests.Count);
+    }
+
     sealed class Clock:TimeProvider {public DateTimeOffset Now=SaxoMarketDataTests.Now;public override DateTimeOffset GetUtcNow()=>Now;}
     sealed class Host:IHostEnvironment {
         public string EnvironmentName {get;set;}="Production";public string ApplicationName {get;set;}="Test";
@@ -448,20 +508,26 @@ public sealed class SaxoMarketDataTests
         public List<(string Method,string Url,string? Auth)> Requests=[];
         public HttpStatusCode ChartStatus=HttpStatusCode.OK,QuoteStatus=HttpStatusCode.OK;
         public string? ChartError,QuoteError,QuoteBody;
+        public string FxBody=FxQuote,FxListings="""{"Data":[{"Symbol":"USDDKK","AssetType":"FxSpot","Identifier":987}]}""";
+        public HttpStatusCode FxStatus=HttpStatusCode.OK;
+        public int DelayMs;
         // Per-instrument overrides for entitlement tests: Uic -> chart status.
         public Dictionary<string,HttpStatusCode> ChartStatusByUic=[];
         public string Listings="""{"Data":[{"Symbol":"MSFT:xnas","Description":"Microsoft","ExchangeId":"xnas","AssetType":"Stock","Identifier":123},{"Symbol":"GMAB:xcse","Description":"Genmab","ExchangeId":"xcse","AssetType":"Stock","Identifier":456}]}""";
         public HttpClient CreateClient(string name)=>new(this,false);
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage r,CancellationToken ct) {
-            Requests.Add((r.Method.Method,r.RequestUri!.ToString(),r.Headers.Authorization?.ToString()));
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage r,CancellationToken ct) {
+            lock(Requests)Requests.Add((r.Method.Method,r.RequestUri!.ToString(),r.Headers.Authorization?.ToString()));
             var chart=r.RequestUri.AbsolutePath.Contains("/chart/");var quote=r.RequestUri.AbsolutePath.Contains("/infoprices");
             var uic=Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(r.RequestUri.Query).TryGetValue("Uic",out var u)?u.ToString():"";
             var status=chart?ChartStatusByUic.GetValueOrDefault(uic,ChartStatus):quote?QuoteStatus:HttpStatusCode.OK;
             var payload=chart?(status==HttpStatusCode.OK?(uic=="456"?Bars.Replace("xnas","xcse").Replace("USD","DKK"):Bars):ChartError??"{}"):
                 quote?(status==HttpStatusCode.OK?QuoteBody??(uic=="456"?LiveQuote.Replace("USD","DKK"):LiveQuote):QuoteError??"{}"):Listings;
+            if(r.RequestUri.Query.Contains("AssetTypes=FxSpot")){status=HttpStatusCode.OK;payload=FxListings;}
+            if(r.RequestUri.Query.Contains("AssetType=FxSpot")){status=FxStatus;payload=status==HttpStatusCode.OK?FxBody:"{}";}
             // Unexpected provider properties must never escape the typed market projection.
             payload=payload.Insert(1,"\"AccountKey\":\"private-account\",\"PositionId\":\"private-position\",\"OrderId\":\"private-order\""+(payload.Length>2?",":""));
-            return Task.FromResult(new HttpResponseMessage(status){Content=new StringContent(payload)});
+            if(DelayMs>0)await Task.Delay(DelayMs,ct);
+            return new HttpResponseMessage(status){Content=new StringContent(payload)};
         }
     }
     sealed class Fixture:IDisposable {

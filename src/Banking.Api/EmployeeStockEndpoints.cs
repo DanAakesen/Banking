@@ -53,6 +53,7 @@ public static class EmployeeStockEndpoints
                 finally{if(bytes is not null)Array.Clear(bytes);Array.Clear(buffer);Array.Clear(body.GetBuffer());}
             },ct);
         });
+        history.MapGet("/valuation",([FromServices] EmployeeStockImportService service,[FromServices] Banking.Api.Providers.IMarketDataProvider provider,CancellationToken ct)=>service.CurrentValuation(provider,ct));
         history.MapGet("/uploads",(int? offset,[FromServices] EmployeeStockImportService service,CancellationToken ct)=>service.History(offset??0,ct));
         history.MapGet("/uploads/{id:guid}",(Guid id,[FromServices] EmployeeStockImportService service,CancellationToken ct)=>service.Detail(id,ct));
         history.MapPost("/uploads/{id:guid}/parse",(Guid id,EmployeeStockReceiptAction input,[FromServices] EmployeeStockImportService service,CancellationToken ct)=>WithReader(token=>service.Parse(id,input.Version,token),ct));
@@ -73,6 +74,7 @@ public static class EmployeeStockEndpoints
             return await next(context);
         });
         demo.MapPost("/uploads",(DemoEmployeeStockUpload input,[FromServices] EmployeeStockImportService service,CancellationToken ct)=>WithReader(token=>service.UploadDemo(input.Version,token),ct));
+        demo.MapGet("/valuation",([FromServices] EmployeeStockImportService service,[FromServices] Banking.Api.Providers.IMarketDataProvider provider,CancellationToken ct)=>service.CurrentValuation(provider,ct));
         demo.MapGet("/uploads",(int? offset,[FromServices] EmployeeStockImportService service,CancellationToken ct)=>service.History(offset??0,ct));
         demo.MapGet("/uploads/{id:guid}",(Guid id,[FromServices] EmployeeStockImportService service,CancellationToken ct)=>service.Detail(id,ct));
         demo.MapPost("/uploads/{id:guid}/approve",(Guid id,EmployeeStockApproval input,[FromServices] EmployeeStockImportService service,CancellationToken ct)=>service.Approve(id,input,ct));
