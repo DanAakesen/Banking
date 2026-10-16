@@ -78,18 +78,23 @@ public static class PensionReportParser
         return matches.Count == 1 ? Amount(matches[0].Groups[1].Value) : null;
     }
     static string Provider(string text) => Providers.FirstOrDefault(p => Has(text, @"(?<!\p{L})" + Regex.Escape(p) + @"(?!\p{L})")) ?? "";
-    public static PensionReport Parse(byte[] bytes, CancellationToken ct = default)
+    public static PensionReport Parse(byte[] bytes, CancellationToken ct = default) => Parse(bytes, ct, null);
+    internal static PensionReport Parse(byte[] bytes, CancellationToken ct, Action<string, int, int>? progress)
     {
         Check.That(bytes.Length is > 5 and <= MaxBytes && bytes.AsSpan(0, 5).SequenceEqual("%PDF-"u8), "INVALID_PENSION_PDF");
+        progress?.Invoke("Opening", 0, 0);
         using var pdf = PdfDocument.Open(bytes, new ParsingOptions { UseLenientParsing = false, MaxStackDepth = 64 });
         Check.That(!pdf.IsEncrypted, "PENSION_PDF_ENCRYPTED");
         Check.That(pdf.NumberOfPages is > 0 and <= MaxPages, "PENSION_PDF_PAGE_LIMIT");
         var pages = new List<Line[]>(); var letters = 0;
-        foreach (var page in pdf.GetPages())
+        for (var number = 1; number <= pdf.NumberOfPages; number++)
         {
             ct.ThrowIfCancellationRequested();
+            progress?.Invoke("ReadingPage", number, letters);
+            var page = pdf.GetPage(number);
             letters += page.Letters.Count;
             Check.That(page.Letters.Count <= 60_000 && letters <= 600_000, "PENSION_PDF_TEXT_LIMIT");
+            progress?.Invoke("ReadingWords", number, letters);
             var words = page.GetWords().Select(w => new Word(w.Text, w.BoundingBox.Left, w.BoundingBox.Bottom)).ToArray();
             var rows = new List<List<Word>>();
             foreach (var word in words.OrderByDescending(w => w.Y).ThenBy(w => w.X))
@@ -102,6 +107,7 @@ public static class PensionReportParser
         }
         Check.That(letters >= 20, "PENSION_PDF_SCANNED_OR_EMPTY");
         Check.That(pages.SelectMany(p => p).Any(l => Has(l.Text, "pensionsinfo")), "PENSIONSINFO_PDF_REQUIRED");
+        progress?.Invoke("Extracting", pages.Count, letters);
         return Extract(pages, ct);
     }
     static PensionReport Extract(List<Line[]> pages, CancellationToken ct)

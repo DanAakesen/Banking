@@ -4,7 +4,7 @@ using Banking.Api.Services;
 
 namespace Banking.Tests;
 
-public class PensionPdfTests
+public partial class PensionPdfTests
 {
     [Theory]
     [InlineData("36.000", 36000)]
