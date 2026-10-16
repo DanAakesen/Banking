@@ -126,4 +126,46 @@ public sealed class EmployeeStockWorkbookTests
         Assert.True(bytes.Length<EmployeeStockWorkbook.MaxBytes);
         Assert.Equal("STOCK_XML_NODE_LIMIT",Assert.Throws<ApiFailure>(()=>EmployeeStockWorkbook.Parse(bytes)).Code);
     }
+    const string UnusedBinaryDefault="<Default Extension='bin' ContentType='application/vnd.ms-excel.sheet.binary.macroEnabled.main'/>";
+    const string WorkbookOverride="<Override PartName='/xl/workbook.xml' ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml'/>";
+    static void ContentTypes(Dictionary<string,string> parts,string declarations)=>parts["[Content_Types].xml"]=
+        "<Types xmlns='http://schemas.openxmlformats.org/package/2006/content-types'><Default Extension='xml' ContentType='application/xml'/>"+declarations+"</Types>";
+    [Fact]
+    public void UnusedBinaryMacroDefaultPreservesSourceFactsAndMinimizedPrivacyShape()
+    {
+        var expected=EmployeeStockWorkbook.Parse(SyntheticStockWorkbook.Create());
+        var report=EmployeeStockWorkbook.Parse(SyntheticStockWorkbook.Create(package:p=>ContentTypes(p,UnusedBinaryDefault+WorkbookOverride)));
+        Assert.Equal(EmployeeStockWorkbook.Version,report.ParserVersion);
+        Assert.Equal(JsonSerializer.Serialize(expected),JsonSerializer.Serialize(report));
+        foreach(var privateValue in new[]{"FictionalFamily","FictionalGiven","00007321","00004123","00004124","Fictional Custodian"})Assert.DoesNotContain(privateValue,JsonSerializer.Serialize(report));
+    }
+    [Theory]
+    [InlineData("macro-override","STOCK_ACTIVE_CONTENT")][InlineData("macro-default-xml","STOCK_ACTIVE_CONTENT")][InlineData("macro-default-rels","STOCK_ACTIVE_CONTENT")]
+    [InlineData("binary-part","STOCK_UNSUPPORTED_PART")][InlineData("unused-macro-override","STOCK_ACTIVE_CONTENT")]
+    [InlineData("duplicate-default","STOCK_PACKAGE_STRUCTURE")][InlineData("duplicate-override","STOCK_PACKAGE_STRUCTURE")]
+    [InlineData("invalid-extension","STOCK_PACKAGE_STRUCTURE")][InlineData("invalid-override-path","STOCK_PACKAGE_STRUCTURE")]
+    [InlineData("vba-default","STOCK_ACTIVE_CONTENT")][InlineData("activex-default","STOCK_ACTIVE_CONTENT")]
+    [InlineData("ole-default","STOCK_ACTIVE_CONTENT")][InlineData("binary-default","STOCK_ACTIVE_CONTENT")][InlineData("nested-declaration","STOCK_PACKAGE_STRUCTURE")]
+    public void ActualActivePartsAndAmbiguousTypeDeclarationsRemainRejected(string kind,string code)
+    {
+        var bytes=SyntheticStockWorkbook.Create(package:p=>{
+            var declarations=UnusedBinaryDefault+WorkbookOverride;
+            switch(kind){
+                case "macro-override":declarations=UnusedBinaryDefault+WorkbookOverride.Replace("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml","application/vnd.ms-excel.sheet.macroEnabled.main+xml");break;
+                case "macro-default-rels":declarations+="<Default Extension='rels' ContentType='application/vnd.ms-excel.sheet.macroEnabled.main+xml'/>";break;
+                case "binary-part":p["xl/payload.bin"]="<x/>";break;
+                case "unused-macro-override":declarations+="<Override PartName='/xl/unused.xml' ContentType='application/vnd.ms-excel.sheet.macroEnabled.main+xml'/>";break;
+                case "duplicate-default":declarations+="<Default Extension='BIN' ContentType='application/xml'/>";break;
+                case "duplicate-override":declarations+=WorkbookOverride.Replace("/xl/workbook.xml","/XL/WORKBOOK.xml");break;
+                case "invalid-extension":declarations=declarations.Replace("Extension='bin'","Extension='.bin'");break;
+                case "invalid-override-path":declarations=declarations.Replace("/xl/workbook.xml","/xl/../workbook.xml");break;
+                case "nested-declaration":declarations="<Default Extension='bin' ContentType='application/xml'>"+WorkbookOverride+"</Default>";break;
+            }
+            ContentTypes(p,declarations);
+            var activeType=kind switch{"macro-default-xml"=>"application/vnd.ms-excel.sheet.macroEnabled.main+xml","vba-default"=>"application/vnd.ms-office.vbaProject",
+                "activex-default"=>"application/vnd.ms-office.activeX+xml","ole-default"=>"application/vnd.openxmlformats-officedocument.oleObject","binary-default"=>"application/vnd.ms-excel.sheet.binary.main",_=>null};
+            if(activeType is not null)p["[Content_Types].xml"]=p["[Content_Types].xml"].Replace("ContentType='application/xml'","ContentType='"+activeType+"'");
+        });
+        Assert.Equal(code,Assert.Throws<ApiFailure>(()=>EmployeeStockWorkbook.Parse(bytes)).Code);
+    }
 }
