@@ -12,8 +12,14 @@ public static class PensionEndpoints
     {
         var pension = app.MapGroup("/api/pension").AddEndpointFilter(async (context, next) => {
             var workspace = context.HttpContext.RequestServices.GetRequiredService<Workspace>();
-            if (workspace.Mode != "Live" || !workspace.OwnerAuthenticated) throw new ApiFailure(403, "OWNER_REQUIRED_FOR_PENSION");
+            if (workspace.Mode == "Live" && !workspace.OwnerAuthenticated) throw new ApiFailure(403, "OWNER_REQUIRED_FOR_PENSION");
             return await next(context);
+        });
+        pension.MapPost("/uploads/demo", async (DemoSample input, Workspace workspace, PensionImportService service, CancellationToken ct) =>
+        {
+            if (workspace.Mode != "Demo") throw new ApiFailure(403, "DEMO_ONLY");
+            var bytes = DemoPensionReport.Create(input.Version);
+            try { return await service.Upload(bytes, "application/pdf", true, ct); } finally { Array.Clear(bytes); }
         });
         pension.MapPost("/uploads", async (HttpRequest request, Workspace workspace, PensionImportService service, CancellationToken ct) =>
         {
@@ -60,4 +66,5 @@ public static class PensionEndpoints
         return output.ToArray();
     }
     public sealed record PensionRetry(string Version);
+    public sealed record DemoSample(string Version);
 }

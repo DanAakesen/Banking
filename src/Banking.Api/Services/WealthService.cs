@@ -73,7 +73,7 @@ public sealed class WealthService(BankingDb db, TimeProvider clock, Workspace wo
         if(id.HasValue)GoalService.Version(db,row,input.Version);else{Check.That(await db.WealthRecords.CountAsync(ct)<100,"VALUATION_LIMIT");db.WealthRecords.Add(row);}
         row.Name=input.Name.Trim();row.Provider=input.Provider.Trim();row.Kind=input.Kind;row.Value=input.Value;row.Currency=input.Currency;
         row.AsOf=input.AsOf;row.SourceNote=input.SourceNote.Trim();row.AnnualPension=input.AnnualPension;row.RetirementAge=input.RetirementAge;
-        if (row.Kind == "Pension" && workspace.Mode == "Live") await pensionHistory.RecordManual(row, ct);
+        if (row.Kind == "Pension") await pensionHistory.RecordManual(row, ct);
         await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);return row;
     }
     public async Task Delete(Guid id,string version,CancellationToken ct)

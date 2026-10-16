@@ -144,10 +144,12 @@ public sealed class PensionHistoryTests
         var denied = new PensionImportService(db, live, new Clock(), f.Protection, new Reader());
         Assert.Equal(403, (await Assert.ThrowsAsync<ApiFailure>(() => denied.History(0, default))).Status);
     }
-    [Fact]
-    public async Task ManualSaveCreatesDatedReceiptWithoutInventingPriorHistory()
+    [Theory]
+    [InlineData("Live")]
+    [InlineData("Demo")]
+    public async Task ManualSaveCreatesDatedReceiptWithoutInventingPriorHistory(string mode)
     {
-        await using var f = new Fixture(); await f.Init();
+        await using var f = new Fixture(); await f.Init(mode);
         var wealth = new WealthService(f.Db, new Clock(), f.Workspace, f.Service);
         var row = await wealth.Save(null, new("Manual pension", "PFA", "Pension", 100, "DKK", new(2025, 1, 1), "Statement page 1"), default);
         await wealth.Save(row.Id, new("Manual pension", "PFA", "Pension", 120, "DKK", new(2026, 1, 1), "Statement page 1", Version: Convert.ToBase64String(row.Version)), default);
