@@ -692,7 +692,7 @@ class DeployBankingTests(unittest.TestCase):
         healthy = {"status": "running", "environment": "azure"}
         runtime = {"backend": "azure", "build": "git-" + "a" * 40}
         values = iter([deploy.ReleaseError("starting"), None])
-        def fake_app_json(path):
+        def fake_app_json(path, **_kwargs):
             attempt = next(values, None)
             if attempt:
                 raise attempt
@@ -725,6 +725,226 @@ class DeployBankingTests(unittest.TestCase):
         with patch.object(deploy, 'remote_command', return_value=output.replace('a' * 64, 'b' * 64, 1)):
             with self.assertRaisesRegex(deploy.ReleaseError, 'hashes disagree'):
                 deploy.verify_runtime_files('token', manifest)
+
+
+    def test_readiness_accepts_old_build_then_503_timeouts_then_expected_build_after_180_seconds(self):
+        clock = DeploymentClock()
+        expected = "git-" + "a" * 40
+        seen, evidence, logs = [], {}, io.StringIO()
+        def read(method, url, **kwargs):
+            timeout = kwargs["timeout"]
+            self.assertGreater(timeout, 0)
+            self.assertLessEqual(timeout, min(30, 600 - clock.now))
+            seen.append((clock.now, url, timeout))
+            clock.now += 2
+            if 180 <= clock.now < 220:
+                return 503, b"private response must not enter evidence", {}
+            if 220 <= clock.now < 260:
+                clock.now += timeout - 2
+                raise deploy.ReleaseError("private timeout detail")
+            value = {"status": "running", "environment": "azure"} if url.endswith("/health") else {
+                "backend": "azure", "build": "git-" + "b" * 40 if clock.now < 180 else expected,
+                "private": "private runtime detail"}
+            return 200, json.dumps(value).encode(), {}
+        with patch.object(deploy, "request", side_effect=read), \
+             patch.object(deploy.time, "monotonic", side_effect=clock.monotonic), \
+             patch.object(deploy.time, "sleep", side_effect=clock.sleep), redirect_stderr(logs):
+            health, runtime = deploy.wait_for_hosted_runtime(expected, "hosted-readiness", 0, evidence)
+        self.assertGreater(clock.now, 260)
+        self.assertLess(clock.now, 600)
+        self.assertEqual(runtime["build"], expected)
+        self.assertEqual(health["environment"], "azure")
+        self.assertEqual(evidence["outcome"], "succeeded")
+        self.assertEqual(evidence["polls"], evidence["healthReads"])
+        self.assertEqual(evidence["lastObservedBuild"], expected)
+        self.assertNotIn("private", json.dumps(evidence) + logs.getvalue())
+        self.assertTrue(all(deploy.APP_URL in url for _, url, _ in seen))
+
+    def test_readiness_clamps_every_read_and_sleep_to_one_original_deadline(self):
+        for scenario in ("timeouts", "last-sleep"):
+            with self.subTest(scenario=scenario):
+                clock = DeploymentClock()
+                if scenario == "last-sleep":
+                    clock.now = 599.25
+                reads, evidence = [], {}
+                def read(_method, url, **kwargs):
+                    timeout = kwargs["timeout"]
+                    self.assertGreater(timeout, 0)
+                    self.assertLessEqual(timeout, min(30, 600 - clock.now))
+                    reads.append((clock.now, timeout))
+                    if scenario == "timeouts":
+                        clock.now += timeout
+                        raise deploy.ReleaseError("timeout")
+                    value = {"status": "running", "environment": "azure"} if url.endswith("/health") else {"backend": "azure", "build": "git-" + "b" * 40}
+                    return 200, json.dumps(value).encode(), {}
+                with patch.object(deploy, "request", side_effect=read), \
+                     patch.object(deploy.time, "monotonic", side_effect=clock.monotonic), \
+                     patch.object(deploy.time, "sleep", side_effect=clock.sleep), redirect_stderr(io.StringIO()):
+                    with self.assertRaisesRegex(deploy.ReleaseError, "hosted-readiness.*600"):
+                        deploy.wait_for_hosted_runtime("git-" + "a" * 40, "hosted-readiness", 0, evidence)
+                self.assertEqual(clock.now, 600)
+                self.assertEqual(evidence["elapsedMs"], 600000)
+                self.assertEqual(evidence["outcome"], "timed-out")
+                self.assertTrue(all(0 < s <= 5 for s in clock.sleeps))
+                if scenario == "last-sleep":
+                    self.assertEqual(clock.sleeps, [.75])
+                    self.assertEqual([timeout for _, timeout in reads], [.75, .75])
+                else:
+                    self.assertEqual(reads[-1], (595, 5))
+
+    def test_late_valid_health_or_runtime_cannot_pass_readiness(self):
+        for late_path in ("/health", "/api/runtime-info"):
+            with self.subTest(late_path=late_path):
+                clock = DeploymentClock(); clock.now = 599
+                evidence, reads = {}, []
+                def read(_method, url, **kwargs):
+                    self.assertGreater(kwargs["timeout"], 0)
+                    self.assertLessEqual(kwargs["timeout"], 600 - clock.now)
+                    reads.append(url)
+                    if url.endswith(late_path):
+                        clock.now = 600.01  # A transport returning after its budget is never success.
+                    body = {"status": "running", "environment": "azure"} if url.endswith("/health") else {"backend": "azure", "build": "git-" + "a" * 40}
+                    return 200, json.dumps(body).encode(), {}
+                with patch.object(deploy, "request", side_effect=read), \
+                     patch.object(deploy.time, "monotonic", side_effect=clock.monotonic), \
+                     patch.object(deploy.time, "sleep", side_effect=clock.sleep), redirect_stderr(io.StringIO()):
+                    with self.assertRaisesRegex(deploy.ReleaseError, "hosted-readiness"):
+                        deploy.wait_for_hosted_runtime("git-" + "a" * 40, "hosted-readiness", 0, evidence)
+                self.assertEqual(evidence["outcome"], "timed-out")
+                self.assertEqual(evidence["lastOutcome"], "late-health-response" if late_path == "/health" else "late-runtime-response")
+                self.assertEqual(len(reads), 1 if late_path == "/health" else 2)
+                self.assertEqual(clock.sleeps, [])
+
+    def test_readiness_never_accepts_wrong_azure_state_or_unbounded_private_build_text(self):
+        for fault in ("status", "environment", "backend", "build", "invalid-json", "json-array"):
+            with self.subTest(fault=fault):
+                clock, evidence, logs = DeploymentClock(), {}, io.StringIO()
+                def read(_method, url, **_kwargs):
+                    if url.endswith("/health"):
+                        value = {"status": "crashed" if fault == "status" else "running", "environment": "local" if fault == "environment" else "azure"}
+                    else:
+                        if fault == "invalid-json": return 200, b"private invalid JSON", {}
+                        if fault == "json-array": return 200, b"[]", {}
+                        value = {"backend": "local" if fault == "backend" else "azure", "build": "private owner token" if fault == "build" else "git-" + "a" * 40}
+                    return 200, json.dumps(value).encode(), {}
+                with patch.object(deploy, "request", side_effect=read), \
+                     patch.object(deploy.time, "monotonic", side_effect=clock.monotonic), \
+                     patch.object(deploy.time, "sleep", side_effect=clock.sleep), redirect_stderr(logs):
+                    with self.assertRaises(deploy.ReleaseError):
+                        deploy.wait_for_hosted_runtime("git-" + "a" * 40, "hosted-readiness", 0, evidence)
+                self.assertEqual(evidence["outcome"], "timed-out")
+                self.assertNotIn("private", json.dumps(evidence) + logs.getvalue())
+                if fault == "build": self.assertNotIn("lastObservedBuild", evidence)
+
+    def test_rollback_keeps_prior_build_and_assets_gate_with_one_restart_and_shared_deadline(self):
+        clock, evidence = DeploymentClock(), {}
+        expected = "git-" + "b" * 40
+        snapshot = dict(previousBuild=expected, sourceSha="a" * 40, rollbackSha256="c" * 64,
+                        rollbackLocation="/home/Banking/releases/before-" + "a" * 40 + ".zip",
+                        rollbackAssets={"app.js": hashlib.sha256(b"prior asset").hexdigest()})
+        def read(_method, url, **kwargs):
+            remaining = 612 - clock.now  # restart returns at t=12, not t=0.
+            self.assertLessEqual(kwargs["timeout"], remaining)
+            if url.endswith("/health"):
+                return 200, b'{"status":"running","environment":"azure"}', {}
+            if url.endswith("/api/runtime-info"):
+                body = {"backend": "azure", "build": expected if clock.now >= 220 else "git-" + "a" * 40}
+                return 200, json.dumps(body).encode(), {}
+            return 200, b"prior asset" if clock.now >= 300 else b"old asset", {}
+        def restart(*_): clock.now += 12
+        with patch.object(deploy, "remote_command") as restore, patch.object(deploy, "run_az", side_effect=restart) as restart_call, \
+             patch.object(deploy, "request", side_effect=read), \
+             patch.object(deploy.time, "monotonic", side_effect=clock.monotonic), \
+             patch.object(deploy.time, "sleep", side_effect=clock.sleep), redirect_stderr(io.StringIO()):
+            result = deploy.restore_remote_backup("token", snapshot, evidence=evidence)
+        restore.assert_called_once(); restart_call.assert_called_once()
+        self.assertGreater(clock.now, 180); self.assertLess(clock.now, 612)
+        self.assertEqual(result["build"], expected); self.assertEqual(result["assetsVerified"], ["app.js"])
+        self.assertIn("rollbackRestartRequestedAt", evidence); self.assertIn("rollbackRestartCompletedAt", evidence)
+        self.assertEqual(evidence["rollbackReadiness"]["phase"], "rollback-readiness")
+        self.assertGreater(evidence["rollbackReadiness"]["assetReads"], 1)
+        self.assertEqual(evidence["rollbackReadiness"]["elapsedMs"], round((clock.now - 12) * 1000))
+
+    def test_rollback_rejects_a_late_matching_asset_and_a_persistent_asset_mismatch(self):
+        for fault in ("late", "mismatch"):
+            with self.subTest(fault=fault):
+                clock, evidence = DeploymentClock(), {}
+                if fault == "late": clock.now = 599
+                snapshot = {"previousBuild": "git-" + "b" * 40, "rollbackAssets": {"app.js": hashlib.sha256(b"prior").hexdigest()}}
+                def read(_method, url, **kwargs):
+                    self.assertLessEqual(kwargs["timeout"], 600 - clock.now)
+                    if url.endswith("/health"): return 200, b'{"status":"running","environment":"azure"}', {}
+                    if url.endswith("/api/runtime-info"): return 200, json.dumps({"backend": "azure", "build": snapshot["previousBuild"]}).encode(), {}
+                    if fault == "late": clock.now = 600.01
+                    return 200, b"prior" if fault == "late" else b"wrong", {}
+                with patch.object(deploy, "request", side_effect=read), \
+                     patch.object(deploy.time, "monotonic", side_effect=clock.monotonic), \
+                     patch.object(deploy.time, "sleep", side_effect=clock.sleep), redirect_stderr(io.StringIO()):
+                    with self.assertRaisesRegex(deploy.ReleaseError, "rollback-readiness.*600"):
+                        deploy.verify_rollback(snapshot, readiness_started=0, readiness_evidence=evidence)
+                self.assertEqual(evidence["outcome"], "timed-out")
+                self.assertEqual(evidence["lastOutcome"], "late-rollback-asset-response" if fault == "late" else "rollback-asset-mismatch")
+
+    def test_persistent_old_build_or_crash_triggers_terminal_rollback_without_extra_upload_or_restart(self):
+        for fault in ("old-build", "crash"):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as temp:
+                folder = Path(temp); package, manifest_path, manifest, sha = self.package(folder)
+                evidence = folder / "evidence"; evidence.mkdir()
+                snapshot = dict(schemaVersion=1, app=deploy.APP, resourceId=deploy.RESOURCE_ID,
+                                sourceSha=sha, releaseArchiveSha256=manifest["archive"]["sha256"],
+                                artifactDigest="digest", rollbackLocation=f"/home/Banking/releases/before-{sha}.zip",
+                                rollbackSha256="c" * 64, previousBuild="git-" + "b" * 40, previousDeploymentId="before")
+                (evidence / "rollback-manifest.json").write_text(json.dumps(snapshot))
+                args = Namespace(source_sha=sha, package=str(package), manifest=str(manifest_path), artifact_digest="digest", evidence_dir=str(evidence), repo=temp)
+                baseline = ({}, {"build": snapshot["previousBuild"]}, {"id": "before", "status": 4, "complete": True})
+                terminal = {"id": "new", "status": 4, "complete": True}
+                clock = DeploymentClock()
+                def restart_request(*_): clock.now += 12
+                def read(_method, url, **_kwargs):
+                    if fault == "crash": return 503, b"", {}
+                    value = {"status": "running", "environment": "azure"} if url.endswith("/health") else {"backend": "azure", "build": snapshot["previousBuild"]}
+                    return 200, json.dumps(value).encode(), {}
+                with patch.object(deploy, "verify_azure_context"), \
+                     patch.object(deploy, "read_hosted_baseline", return_value=baseline), \
+                     patch.object(deploy, "access_token", return_value="token"), patch.object(deploy, "remote_command"), \
+                     patch.object(deploy, "stage_and_verify_pension_schema", return_value={"verified": True}), \
+                     patch.object(deploy, "post_zip") as upload, patch.object(deploy, "wait_after_publish", return_value=terminal), \
+                     patch.object(deploy, "verify_runtime_files", return_value={}), patch.object(deploy, "run_az", side_effect=restart_request) as restart, \
+                     patch.object(deploy, "request", side_effect=read), patch.object(deploy, "latest_deployment", return_value=terminal), \
+                     patch.object(deploy, "restore_remote_backup", return_value={"build": snapshot["previousBuild"]}) as rollback, \
+                     patch.object(deploy.time, "monotonic", side_effect=clock.monotonic), \
+                     patch.object(deploy.time, "sleep", side_effect=clock.sleep), redirect_stderr(io.StringIO()):
+                    with self.assertRaises(deploy.ReleaseError): deploy.publish(args)
+                upload.assert_called_once(); restart.assert_called_once(); rollback.assert_called_once()
+                result = json.loads((evidence / "release-evidence.json").read_text())
+                self.assertEqual(result["rollbackOutcome"], "succeeded")
+                self.assertEqual(clock.now, 612)
+                self.assertEqual(result["hostedReadiness"]["elapsedMs"], 600000)
+                self.assertEqual(result["hostedReadiness"]["phase"], "hosted-readiness")
+                self.assertIn("hosted-readiness", result["failureMessage"])
+                self.assertTrue(result["controlledRestartIssued"])
+                self.assertIn("controlledRestartRequestedAt", result); self.assertIn("controlledRestartCompletedAt", result)
+
+    def test_security_and_asset_gates_remain_mandatory_after_ready_runtime(self):
+        names = ("index.html", "app.js", "styles.css", "saxo-session.js")
+        manifest = {"files": [dict(path="wwwroot/" + n, sha256=hashlib.sha256(n.encode()).hexdigest()) for n in names]}
+        for fault in ("auth", "asset", "csp", "demo"):
+            with self.subTest(fault=fault):
+                def read(_method, url, **_kwargs):
+                    if url.endswith("/health"): return 200, b'{"status":"running","environment":"azure"}', {}
+                    if url.endswith("/api/runtime-info"): return 200, json.dumps({"backend": "azure", "build": "git-" + "a" * 40}).encode(), {}
+                    if url.endswith("/api/accounts"): return (200 if fault == "auth" else 401), b"", {}
+                    for name in names:
+                        if url.endswith("/" + name): return 200, b"wrong" if fault == "asset" else name.encode(), {}
+                    return 200, b"", {"Content-Security-Policy": "wrong" if fault == "csp" else "expected"}
+                with patch.object(deploy, "request", side_effect=read), \
+                     patch.object(deploy, "expected_csp_hashes", return_value=set()), patch.object(deploy, "expected_csp_policy", return_value="expected"), \
+                     patch.object(deploy.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(dict(
+                         mode="Live" if fault == "demo" else "Demo", provider="product-demo", aggregateParity=True,
+                         anonymousLiveStatus=401, demoLiveStatus=403, financialWrites=0)))), redirect_stderr(io.StringIO()):
+                    with self.assertRaises(deploy.ReleaseError):
+                        deploy.verify_hosted(Path("unused"), manifest, "git-" + "a" * 40, Path("."))
+
 
 
 if __name__ == "__main__":
