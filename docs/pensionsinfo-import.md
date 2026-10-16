@@ -16,6 +16,16 @@ Review shows the original download, source hash/parser version, uploadedAt, repo
 
 One selected agreement maps to one current pension product using stable IDs and rowversion protection. Components explain that balance rather than adding capital. Repeated ratepension components remain distinct. A reported total differing from rounded components remains distinct with a warning; no balancing entry is invented. Older reports enter history without replacing a newer current observation. Payout scenarios, insurance and ATP/public pension entitlements remain separate from saved capital. Units/tax/purchasing-power assumptions are retained only when source patterns support them. Unsupported providers, table structures, terms, dates, holdings, allocation and actual returns require review or remain unknown. Full report coverage is not claimed.
 
+## Source-faithfulness repair — 16 October 2026
+
+Main confirmed the retained private original parses on deployed `c2fe8006eb7e3ad91e9dc765588f52f9e524087f`, but found extraction discrepancies before any financial approval. The additive history migration is already applied to both databases. Owner acceptance and pension Demo population remain pending; the held Demo branch stays unmerged and unapplied.
+
+Parser `pensionsinfo-text-2` adds column-separated capital/insurance, private cross-section agreement linking for logo-only summaries, savings-column dates, repeated components, multiline payout blocks, right-aligned cells, single/ranged/open-ended age headers, and public subtotal/detail deduplication. Report dates remain unknown unless explicitly supported. Earlier public-entitlement ranges are preserved even when before the private retirement start; blanks remain absent and explicit zero remains zero. Reported capital totals and component discrepancies remain intact.
+
+Insurance detail entries remain source observations, never summed into capital or extra policies from overview/final totals. Equal conditional annual cells produce one observation; different conditional amounts stay unknown. Child-benefit sections, beneficiaries, insurance tax markers/full terms and payout purchasing-power trends require original review because the current DTO does not represent them reliably. No full-report coverage is claimed.
+
+An owner can reparse the retained `NeedsReview` receipt with its current rowversion, explicitly replacing unsaved review edits. This uses the same protected original and receipt and accepts no financial values. Approved/rejected receipts cannot be reparsed; approved versions remain immutable. Main must privately reconcile the corrected deployed preview before approving values or releasing the held Demo work. Synthetic 46-page/11-scenario regressions and responsive preview checks are software evidence only.
+
 ## Retention, correction and comparison
 
 `PensionDocuments` deduplicates encrypted originals by SHA-256 within the workspace. Every upload gets a `PensionUpload` receipt; immutable `PensionSnapshots` preserve approved values, source status and product mappings. Identical concurrent uploads serialize original/receipt creation through a short transaction and cross-instance SQL application lock. Both receipts survive. Parsing runs after commit.

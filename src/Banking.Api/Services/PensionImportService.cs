@@ -53,6 +53,8 @@ public sealed class PensionImportService(BankingDb db, Workspace workspace, Time
     {
         RequireAccess(); var upload = await Find(id, ct);
         Check.That(upload.Status != "Approved", "PENSION_UPLOAD_ALREADY_APPROVED");
+        Check.That(upload.Status != "Rejected", "PENSION_UPLOAD_REJECTED");
+        Check.That(upload.Status is "Uploaded" or "Unsupported" or "NeedsReview", "PENSION_REPARSE_NOT_ALLOWED");
         GoalService.Version(db, upload, version);
         var document = await db.PensionDocuments.SingleAsync(d => d.Id == upload.DocumentId, ct);
         if (workspace.Mode == "Demo" && !document.Synthetic) throw new ApiFailure(403, "DEMO_SYNTHETIC_REPORT_ONLY");
@@ -66,6 +68,8 @@ public sealed class PensionImportService(BankingDb db, Workspace workspace, Time
         catch (ApiFailure error) { upload.PreviewJson = ""; upload.Status = "Unsupported"; upload.ErrorCode = error.Code; }
         catch (JsonException) { upload.PreviewJson = ""; upload.Status = "Unsupported"; upload.ErrorCode = "INVALID_STATEMENT_JSON"; }
         finally { Array.Clear(bytes); }
+        // Even identical extraction must check/advance the receipt rowversion on retry.
+        db.Entry(upload).Property(u => u.ParserVersion).IsModified = true;
         await db.SaveChangesAsync(ct);
         return await Detail(id, ct);
     }

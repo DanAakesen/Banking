@@ -96,6 +96,31 @@ public sealed class PensionEndpointTests
         Assert.Equal(HttpStatusCode.Forbidden,(await forged.GetAsync("/api/pension/uploads")).StatusCode);
     }
     [Fact]
+    public async Task ExistingReviewRetryKeepsOriginalAndReceiptAndRejectsStaleOrForeignRequests()
+    {
+        await using var host = new Host(); await host.Init(); using var owner = host.Client();
+        var bytes = ColumnPensionPdf.Create();
+        var uploaded = await owner.PostAsync("/api/pension/uploads", Pdf(bytes)); uploaded.EnsureSuccessStatusCode();
+        var receipt = await uploaded.Content.ReadFromJsonAsync<JsonElement>(); var id = receipt.GetProperty("id").GetGuid();
+        var version = receipt.GetProperty("version").GetString();
+        var parsed = await owner.PostAsJsonAsync($"/api/pension/uploads/{id}/parse", new { version }); parsed.EnsureSuccessStatusCode();
+        var retried = await parsed.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(id, retried.GetProperty("id").GetGuid()); Assert.NotEqual(version, retried.GetProperty("version").GetString());
+        Assert.Equal("NeedsReview", retried.GetProperty("status").GetString()); Assert.False(retried.GetProperty("financialSaved").GetBoolean());
+        Assert.False(retried.TryGetProperty("protectedOriginal", out _)); Assert.False(retried.TryGetProperty("previewJson", out _));
+        Assert.Equal(HttpStatusCode.Conflict, (await owner.PostAsJsonAsync($"/api/pension/uploads/{id}/parse", new { version })).StatusCode);
+        using var demo = host.Client("Demo", "Demo"); using var anonymous = host.Client(null); using var forged = host.Client("Demo", "Live");
+        foreach (var client in new[] { demo, anonymous, forged })
+        {
+            var expected = client == anonymous ? HttpStatusCode.Unauthorized : HttpStatusCode.Forbidden;
+            Assert.Equal(expected, (await client.PostAsJsonAsync($"/api/pension/uploads/{id}/parse", new { version = retried.GetProperty("version").GetString() })).StatusCode);
+            Assert.Equal(expected, (await client.GetAsync($"/api/pension/uploads/{id}/original")).StatusCode);
+        }
+        Assert.Equal(bytes, await owner.GetByteArrayAsync($"/api/pension/uploads/{id}/original"));
+        var history = await owner.GetFromJsonAsync<JsonElement>("/api/pension/uploads"); Assert.Equal(1, history.GetProperty("total").GetInt32());
+        Assert.Equal(0, history.GetProperty("development").GetArrayLength()); Assert.Equal(0, await host.WealthCount()); Assert.Equal(1, await host.DocumentCount());
+    }
+    [Fact]
     public async Task SimultaneousIdenticalUploadsRetainTwoReceiptsAndOneContentRecord()
     {
         await using var host=new Host();await host.Init();using var owner=host.Client();var bytes=SyntheticPensionReport.Create("later");
