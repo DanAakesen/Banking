@@ -47,6 +47,8 @@ public sealed class PensionHistoryTests
     }
     internal static DbContextOptions<BankingDb> Options(SqliteConnection connection) => new DbContextOptionsBuilder<BankingDb>()
         .UseSqlite(connection).ReplaceService<IModelCustomizer, Model>().AddInterceptors(new Versions()).Options;
+    internal static DbContextOptions<BankingDb> Options(string connection) => new DbContextOptionsBuilder<BankingDb>()
+        .UseSqlite(connection).ReplaceService<IModelCustomizer, Model>().AddInterceptors(new Versions()).Options;
     internal sealed class Fixture : IAsyncDisposable
     {
         public readonly SqliteConnection Connection = new("Data Source=:memory:");
