@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.IO.Compression;
+using System.Xml.Linq;
 using Banking.Api.Data;
 using Banking.Api.Providers;
 using Banking.Api.Security;
@@ -20,6 +22,11 @@ public sealed class EmployeeStockDemoTests
     public void ThreeSheetOriginalHasDeterministicReconciledSourceFactsAndVariableSchedules(string variant,int unvested,int hireVested,int annualVested)
     {
         var bytes=DemoEmployeeStockWorkbook.Create(variant);Assert.Equal(bytes,DemoEmployeeStockWorkbook.Create(variant));var r=EmployeeStockWorkbook.Parse(bytes);
+        using var zip=new ZipArchive(new MemoryStream(bytes));XNamespace rel="http://schemas.openxmlformats.org/package/2006/relationships";
+        using var relStream=zip.GetEntry("xl/_rels/workbook.xml.rels")!.Open();var relationships=XDocument.Load(relStream).Root!;
+        var shared=Assert.Single(relationships.Elements(rel+"Relationship"),x=>(string?)x.Attribute("Type")=="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings");
+        Assert.Equal("sharedStrings.xml",(string?)shared.Attribute("Target"));Assert.NotNull(zip.GetEntry("xl/"+(string?)shared.Attribute("Target")));
+        Assert.Equal(relationships.Elements().Count(),relationships.Elements().Select(x=>(string?)x.Attribute("Id")).Distinct().Count());
         Assert.Equal(2,r.Grants.Length);Assert.Equal(36,r.Schedules.Length);Assert.Equal(160,r.Grants[0].Awarded);Assert.Equal(120,r.Grants[1].Awarded);Assert.Equal(hireVested,r.Grants[0].Vested);Assert.Equal(annualVested,r.Grants[1].Vested);Assert.Equal(unvested,r.Grants.Sum(g=>g.Unvested));
         Assert.All(r.Grants,g=>{Assert.Equal(g.Awarded,g.Vested+g.Unvested);Assert.Equal(g.Awarded,r.Schedules.Where(s=>s.GrantKey==g.Key).Sum(s=>s.Shares));});
         Assert.Equal(r.Grants.Sum(g=>g.Vested),r.Transactions.Sum(t=>t.Quantity));Assert.All(r.Transactions,t=>Assert.Equal(t.Quantity,t.NetShares+t.SharesForTaxes));

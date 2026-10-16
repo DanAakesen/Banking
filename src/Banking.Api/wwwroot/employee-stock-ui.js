@@ -24,22 +24,22 @@ export function employeeStockQuote(snapshot,now=Date.now()){
  return {price:q.price,observedAt:new Date(observed).toISOString(),retrievedAt:new Date(retrieved).toISOString(),delayMinutes:q.quoteDelayMinutes??null};
 }
 export function mountEmployeeStockPreview(root,{S,e,money,date,today,api}){
- const L=(en,da)=>S.lang==='da'?da:en,seq=S.seq,mode=S.mode,controller=new AbortController();let report=null,request=0;
+ const L=(en,da)=>S.lang==='da'?da:en,seq=S.seq,mode=S.mode,controller=new AbortController();let report=null,request=0,disposeReport=()=>{};
  const current=()=>root.isConnected&&S.seq===seq&&S.mode===mode&&!controller.signal.aborted;
  const number=n=>n==null?'—':new Intl.NumberFormat(S.lang==='da'?'da-DK':'en-GB',{maximumFractionDigits:8}).format(n);
 
  root.className='employee-stock loan-card';root.innerHTML=`<h2>${L('Microsoft employee shares','Microsoft-medarbejderaktier')}</h2><p>${L('Upcoming vesting is conditional on continued employment. Historical vesting does not establish current holdings.','Kommende modning afhænger af fortsat ansættelse. Tidligere modning dokumenterer ikke den aktuelle beholdning.')}</p>${mode==='Live'&&S.owner?`<label for="employee-stock-file">${L('Preview stock export · .xlsx','Gennemgå aktieeksport · .xlsx')}</label><input id="employee-stock-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"><p>${L('Preview only. This file and its values are not saved. Nothing is added to your wealth.','Kun gennemgang. Filen og dens værdier gemmes ikke. Intet lægges til din formue.')}</p><p id="employee-stock-status" role="status" aria-live="polite"></p><div id="employee-stock-result"></div>`:`<p>${L('Private workbook preview is available in Dan’s workspace. No employee-share imports in Demo yet.','Privat filgennemgang er tilgængelig i Dans arbejdsområde. Der er endnu ingen medarbejderaktier importeret i Demo.')}</p>`}`;
  const input=root.querySelector('#employee-stock-file'),status=root.querySelector('#employee-stock-status'),out=root.querySelector('#employee-stock-result');
  if(input)input.onchange=async()=>{
-  const file=input.files?.[0],id=++request;report=null;out.replaceChildren();status.textContent='';if(!file)return;
+  const file=input.files?.[0],id=++request;disposeReport();disposeReport=()=>{};report=null;out.replaceChildren();status.textContent='';if(!file)return;
   if(file.size>8*1024*1024||!file.name.toLowerCase().endsWith('.xlsx')){status.textContent=L('Choose an .xlsx file no larger than 8 MiB.','Vælg en .xlsx-fil på højst 8 MiB.');input.value='';return;}
   status.textContent=L('Reading the three source sheets…','Læser de tre kildeark…');input.disabled=true;
-  try{const result=await api('employee-stocks/preview',{method:'POST',headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},body:file,signal:controller.signal});if(!current()||id!==request)return;report=result;renderEmployeeStockReport(out,report,{S,e,money,date,today,api});status.textContent=L('Preview ready. No financial values saved.','Gennemgang klar. Ingen finansielle værdier gemt.');}
+  try{const result=await api('employee-stocks/preview',{method:'POST',headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},body:file,signal:controller.signal});if(!current()||id!==request)return;report=result;disposeReport=renderEmployeeStockReport(out,report,{S,e,money,date,today,api});status.textContent=L('Preview ready. No financial values saved.','Gennemgang klar. Ingen finansielle værdier gemt.');}
   catch(err){if(current()&&id===request&&!err.stale&&err.name!=='AbortError')status.textContent=L('The workbook could not be previewed. Check the supported three-sheet export.','Filen kunne ikke gennemgås. Kontrollér eksporten med de tre understøttede ark.')+' '+(/^[A-Z_]{1,80}$/.test(err.code||'')?err.code:'');}
   finally{if(current()&&id===request){input.disabled=false;input.value='';}}
  };
 
- return ()=>{request++;controller.abort();report=null;root.replaceChildren();};
+ return ()=>{request++;controller.abort();disposeReport();report=null;root.replaceChildren();};
 }
 
 // Calendar bins retain empty months and actual delivery dates. Viewing never changes ownership.
@@ -62,7 +62,7 @@ export function stockTimeline(report,cutoff,{period='month',range='12',history=f
 
 // Shared dashboard for private and independently synthetic retained reports.
 export function renderEmployeeStockReport(out,report,{S,e,money,date,today,api},initial={}){
- const seq=S.seq,L=(en,da)=>S.lang==='da'?da:en,locale=S.lang==='da'?'da-DK':'en-GB';
+ const seq=S.seq,mode=S.mode,L=(en,da)=>S.lang==='da'?da:en,locale=S.lang==='da'?'da-DK':'en-GB';
  const number=n=>n==null?'—':new Intl.NumberFormat(locale,{maximumFractionDigits:8}).format(n);
  const sum=key=>report.grants.reduce((s,g)=>s+g[key],0),source=s=>s.sheet+' · '+L('row','række')+' '+s.row;
  const next=upcomingStockEvents(report,initial.cutoff||today()),first=next[0]?.date,nextQty=next.filter(x=>x.date===first).reduce((s,x)=>s+x.conditionalShares,0);
@@ -76,21 +76,26 @@ export function renderEmployeeStockReport(out,report,{S,e,money,date,today,api},
  <details id="stock-past"><summary>${L('Past vesting and source grants','Tidligere modning og tildelinger')}</summary><p>${L('Vested history is not held now. Gross deliveries, tax withholding and net delivery are separate. Total Transacted is not a sale.','Modningshistorik er ikke ejet nu. Bruttolevering, skattetræk og nettolevering er adskilt. Total Transacted er ikke et salg.')}</p>${table([L('Source','Kilde'),L('Date / grant','Dato / tildeling'),L('Gross / net shares','Brutto- / nettoaktier'),L('Historical FMV · USD/profile','Historisk markedsværdi · USD/profil')],report.transactions.map(t=>[source(t.source),date(t.date)+' · '+(report.grants.findIndex(g=>g.key===t.grantKey)+1),number(t.quantity)+' / '+number(t.netShares),t.historicalFairMarketValue]),3)}${table([L('Grant / source','Tildeling / kilde'),L('Source dates','Kildedatoer'),L('Awarded / past vested / unvested','Tildelt / tidligere modnet / umodnet'),L('Grant price · not current quote','Tildelingskurs · ikke aktuel kurs')],report.grants.map((g,i)=>[(i+1)+' · '+g.type+' · '+source(g.source),date(g.awardDate),[g.awarded,g.vested,g.unvested].map(number).join(' / '),g.grantPrice]),3)}</details>
  <details id="stock-warnings"><summary>${L('Source & review notes','Kilde og gennemgang')} (${report.warnings.length})</summary><p>${L('Source report date: not reported.','Kildens rapportdato: ikke oplyst.')} ${initial.reportAsOf?L('Owner-confirmed report date','Ejerbekræftet rapportdato')+': '+date(initial.reportAsOf):L('Date awaiting review','Dato afventer gennemgang')}</p><ul>${report.warnings.map(w=>`<li>${e(messages[w.code]||L('Reconciliation needs review','Afstemning kræver gennemgang'))}${w.source?' · '+e(source(w.source)):''}</li>`).join('')}</ul>${next.reduce((s,x)=>s+x.conditionalShares,0)!==sum('unvested')?`<p>${L('Upcoming schedule and source unvested differ. Review the report date and unmatched deliveries; no clock-based rollforward.','Kommende plan og kildens umodnede afviger. Gennemgå rapportdato og uafstemte leveringer; ingen fremførsel efter kalenderen.')}</p>`:''}<p>${L('Parser','Parser')}: ${e(report.parserVersion)}</p></details>`;
  for(const [id,value] of Object.entries({'stock-price':initial.priceUsd,'stock-rate':initial.dkkPerUsd,'stock-observed':initial.priceAsOf,'stock-price-source':initial.priceSource,'stock-fx-observed':initial.fxAsOf,'stock-fx-source':initial.fxSource}))if(value!=null)out.querySelector('#'+id).value=value;
- let period='month';
+ let period='month',selectedKey=null,disposed=false,lastWidth=0,resizeFrame=0;
+ const current=()=>!disposed&&out.isConnected&&S.seq===seq&&S.mode===mode;
  out.querySelectorAll('[data-period]').forEach(el=>el.onclick=()=>{period=el.dataset.period;out.querySelectorAll('[data-period]').forEach(b=>b.setAttribute('aria-pressed',String(b===el)));draw();});
  out.querySelectorAll('#stock-valuation input').forEach(el=>el.addEventListener('input',draw));
  out.querySelector('#stock-currency').onchange=draw;out.querySelector('#stock-range').onchange=draw;
  out.querySelector('#stock-live-quote')?.addEventListener('click',async ev=>{const button=ev.currentTarget,status=out.querySelector('#stock-quote-status');button.disabled=true;
-  try{const result=employeeStockQuote(await api('markets/chart?symbol=MSFT&range=1d'));if(!out.isConnected||S.seq!==seq)return;
+  try{const result=employeeStockQuote(await api('markets/chart?symbol=MSFT&range=1d'));if(!current())return;
    if(!result){status.textContent=L('Quote unavailable. The schedule remains usable.','Kurs utilgængelig. Planen kan stadig bruges.');return;}
    out.querySelector('#stock-price').value=result.price;out.querySelector('#stock-observed').value=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Copenhagen',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(result.observedAt));
    out.querySelector('#stock-price-source').value='Saxo LIVE · '+result.observedAt+' · '+(result.delayMinutes==null?'delay unknown':result.delayMinutes+' min reported delay');
    status.textContent=L('Indicative quote','Indikativ kurs')+': '+result.observedAt+' · '+L('Retrieved','Hentet')+': '+result.retrievedAt+' · '+(result.delayMinutes==null?L('Delay unknown','Ukendt forsinkelse'):result.delayMinutes+' min')+'. '+L('View only; not saved. FX needs its own source.','Kun visning; ikke gemt. Valuta kræver egen kilde.');draw();
-  }catch(err){if(out.isConnected&&S.seq===seq&&!err.stale)status.textContent=L('Quote unavailable. Use a dated manual price or leave value unknown.','Kurs utilgængelig. Brug en dateret manuel kurs, eller lad værdien være ukendt.');}
-  finally{if(out.isConnected&&S.seq===seq)button.disabled=false;}
+  }catch(err){if(current()&&!err.stale)status.textContent=L('Quote unavailable. Use a dated manual price or leave value unknown.','Kurs utilgængelig. Brug en dateret manuel kurs, eller lad værdien være ukendt.');}
+  finally{if(current())button.disabled=false;}
  });
  function draw(){
+  if(disposed)return;
   const field=id=>out.querySelector('#stock-'+id),chart=field('chart'),cutoff=field('cutoff');
+  lastWidth=chart.clientWidth;
+  const focusedBin=chart.querySelector('[data-bin]:focus')?.getAttribute?.('data-bin'),tableOpen=chart.querySelector('.stock-schedule-table')?.open;
+  const tableFocus=chart.querySelector('.stock-schedule-table summary:focus')?'.stock-schedule-table summary':chart.querySelector('.stock-table-wrap:focus')?'.stock-table-wrap':null;
   if(!cutoff.value||!cutoff.validity.valid){chart.innerHTML='<p role="alert">'+L('Choose a valid viewing cutoff.','Vælg en gyldig visningsdato.')+'</p>';return;}
   const valid=(value,day,src)=>value.validity.valid&&day.value&&day.validity.valid&&src.validity.valid&&src.value.trim().length>0&&src.value.length<=120;
   const price=valid(field('price'),field('observed'),field('price-source'))?field('price').valueAsNumber:NaN,rate=valid(field('rate'),field('fx-observed'),field('fx-source'))?field('rate').valueAsNumber:NaN;
@@ -106,8 +111,18 @@ export function renderEmployeeStockReport(out,report,{S,e,money,date,today,api},
   const allQty=bins.reduce((s,b)=>s+b.conditional+b.history,0),tickEvery=Math.max(1,Math.ceil(bins.length/(W<500?5:10)));
   chart.innerHTML=`<div class="stock-chart-total"><strong>${number(allQty)} <span>${L('shares in view','aktier i visning')}</span></strong><span>${currency==='shares'?L('Select a bar for exact dates','Vælg en søjle for præcise datoer'):known?L('Indicative','Indikativt')+' · '+money(converted(allQty),currency):L('Valuation unknown · showing shares','Værdi ukendt · viser aktier')}</span></div><div class="stock-legend"><span class="stock-legend-conditional">${L('Conditional upcoming','Kommende betinget')}</span>${range==='history'?`<span class="stock-legend-history">${L('Vested history · not held now','Modningshistorik · ikke ejet nu')}</span>`:''}</div><svg class="stock-timeline" viewBox="0 0 ${W} ${H}" role="group" aria-label="${L('Vesting by calendar date','Modning efter kalenderdato')}">${[0,.5,1].map(r=>`<line class="stock-grid" x1="${left}" x2="${W-right}" y1="${top+plotH*(1-r)}" y2="${top+plotH*(1-r)}"/><text class="stock-axis" x="${left-8}" y="${top+plotH*(1-r)+4}" text-anchor="end">${e(new Intl.NumberFormat(locale,{notation:'compact',maximumFractionDigits:1}).format(max*r))}</text>`).join('')}${bins.map((b,i)=>{const x=left+i*step+(step-bar)/2,h=value(b.history)/max*plotH,c=value(b.conditional)/max*plotH;return `<g class="stock-bar" data-bin="${i}" role="button" tabindex="${b.events.length&&bins.slice(0,i).every(x=>!x.events.length)?0:-1}" aria-label="${e((model.period==='month'?monthLabel(b.date)+' ':'')+b.date.slice(0,4)+': '+label(b.conditional+b.history))}" aria-pressed="false"><rect class="stock-hit" x="${left+i*step}" y="${top}" width="${step}" height="${plotH}"/><rect class="stock-delivered" x="${x}" y="${top+plotH-h}" width="${bar}" height="${h}" rx="3"/><rect class="stock-conditional" x="${x}" y="${top+plotH-h-c}" width="${bar}" height="${c}" rx="3"/>${i%tickEvery===0||i===bins.length-1?`<text class="stock-axis" text-anchor="middle" x="${left+(i+.5)*step}" y="${H-17}">${e(tick(b))}</text>`:''}</g>`;}).join('')}<text class="stock-axis" x="${left}" y="12">${unit==='shares'?L('Shares','Aktier'):unit}</text></svg><div id="stock-point" class="stock-point" role="status" aria-live="polite"></div><details class="stock-schedule-table"><summary>${L('View scheduled dates as a table','Se planlagte datoer som tabel')}</summary>${table([L('Date','Dato'),L('Shares','Aktier'),L('State','Status'),currency==='shares'?L('Grant','Tildeling'):L('Illustrative value','Illustrativ værdi')],model.events.map(x=>[date(x.date),number(x.shares),x.kind==='history'?L('Vested history','Modningshistorik'):L('Conditional','Betinget'),currency==='shares'?report.grants.findIndex(g=>g.key===x.grantKey)+1:converted(x.shares)==null?'—':number(converted(x.shares))+' '+currency]))}</details>`;
   const buttons=[...chart.querySelectorAll('[data-bin]')];
-  function select(i,focus=false){const b=bins[i];if(!b)return;buttons.forEach((button,n)=>{button.setAttribute('aria-pressed',String(n===i));button.setAttribute('tabindex',n===i?'0':'-1');});if(focus)buttons[i]?.focus();chart.querySelector('#stock-point').innerHTML=b.events.length?`<strong>${e(model.period==='year'?b.key:monthLabel(b.date)+' '+b.date.slice(0,4))}</strong><div>${b.events.map(x=>`<span>${e(date(x.date))} <b>${number(x.shares)} ${L('shares','aktier')}</b> · ${x.kind==='history'?L('Vested history','Modningshistorik'):L('Conditional','Betinget')}${currency==='shares'?'':' · '+(converted(x.shares)==null?'—':money(converted(x.shares),currency))}</span>`).join('')}</div>`:`<span>${e(model.period==='year'?b.key:monthLabel(b.date)+' '+b.date.slice(0,4))} · ${L('No source events','Ingen kildehændelser')}</span>`;}
-  buttons.forEach((button,i)=>{button.onclick=()=>select(i);button.onkeydown=ev=>{let n=ev.key==='ArrowRight'?i+1:ev.key==='ArrowLeft'?i-1:ev.key==='Home'?0:ev.key==='End'?bins.length-1:null;if(n!==null){ev.preventDefault();select(Math.max(0,Math.min(bins.length-1,n)),true);}else if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();select(i);}};});select(Math.max(0,bins.findIndex(b=>b.events.length)));
+  function select(i,focus=false){const b=bins[i];if(!b)return;selectedKey=b.key;buttons.forEach((button,n)=>{button.setAttribute('aria-pressed',String(n===i));button.setAttribute('tabindex',n===i?'0':'-1');});if(focus)buttons[i]?.focus({preventScroll:true});chart.querySelector('#stock-point').innerHTML=b.events.length?`<strong>${e(model.period==='year'?b.key:monthLabel(b.date)+' '+b.date.slice(0,4))}</strong><div>${b.events.map(x=>`<span>${e(date(x.date))} <b>${number(x.shares)} ${L('shares','aktier')}</b> · ${x.kind==='history'?L('Vested history','Modningshistorik'):L('Conditional','Betinget')}${currency==='shares'?'':' · '+(converted(x.shares)==null?'—':money(converted(x.shares),currency))}</span>`).join('')}</div>`:`<span>${e(model.period==='year'?b.key:monthLabel(b.date)+' '+b.date.slice(0,4))} · ${L('No source events','Ingen kildehændelser')}</span>`;}
+  buttons.forEach((button,i)=>{button.onclick=()=>select(i);button.onkeydown=ev=>{let n=ev.key==='ArrowRight'?i+1:ev.key==='ArrowLeft'?i-1:ev.key==='Home'?0:ev.key==='End'?bins.length-1:null;if(n!==null){ev.preventDefault();select(Math.max(0,Math.min(bins.length-1,n)),true);}else if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();select(i);}};});const selected=bins.findIndex(b=>b.key===selectedKey);select(selected>=0?selected:Math.max(0,bins.findIndex(b=>b.events.length)));
+  if(tableOpen)chart.querySelector('.stock-schedule-table').open=true;
+  if(focusedBin!=null)buttons[Number(focusedBin)]?.focus({preventScroll:true});else if(tableFocus)chart.querySelector(tableFocus)?.focus?.({preventScroll:true});
  }
  draw();
+ // Observe the chart container: Codex side panels and page layout can resize without a window event.
+ const chart=out.querySelector('#stock-chart');
+ const resize=typeof ResizeObserver==='undefined'?null:new ResizeObserver(()=>{
+  if(!current()||chart.clientWidth===lastWidth||resizeFrame)return;
+  resizeFrame=requestAnimationFrame(()=>{resizeFrame=0;if(current()&&chart.clientWidth!==lastWidth)draw();});
+ });
+ resize?.observe(chart);
+ return ()=>{disposed=true;resize?.disconnect();if(resizeFrame)cancelAnimationFrame(resizeFrame);resizeFrame=0;};
 }
