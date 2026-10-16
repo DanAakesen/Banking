@@ -223,4 +223,51 @@ public sealed class PensionHistoryTests
         Assert.Equal("PENSION_DUPLICATE_MAPPING_MISMATCH",(await Assert.ThrowsAsync<ApiFailure>(()=>f.Service.Approve(second.GetProperty("id").GetGuid(),changed,default))).Code);
         Assert.Equal(1,await f.Db.PensionSnapshots.CountAsync());Assert.Equal(431000,(await f.Db.WealthRecords.SingleAsync()).Value);
     }
+    [Fact]
+    public async Task RetainedReviewCanBeReparsedWithNewVersionWithoutNewReceiptOrFinancialSave()
+    {
+        await using var f = new Fixture(); await f.Init(); var bytes = ColumnPensionPdf.Create();
+        var receipt = Element(await f.Service.Upload(bytes, "application/pdf", false, default));
+        var id = receipt.GetProperty("id").GetGuid();
+        var row = await f.Db.PensionUploads.SingleAsync(); row.ParserVersion = "pensionsinfo-text-1";
+        await f.Db.SaveChangesAsync(); var version = Convert.ToBase64String(row.Version);
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => f.Service.Parse(id, receipt.GetProperty("version").GetString()!, default));
+        f.Db.ChangeTracker.Clear();
+        var retried = Element(await f.Service.Parse(id, version, default));
+        Assert.Equal(id, retried.GetProperty("id").GetGuid()); Assert.Equal(PensionReportParser.Version, retried.GetProperty("parserVersion").GetString());
+        Assert.NotEqual(version, retried.GetProperty("version").GetString());
+        Assert.Equal(927000, retried.GetProperty("report").GetProperty("agreements")[0].GetProperty("balance").GetProperty("value").GetDecimal());
+        Assert.Equal(bytes, (await f.Service.Original(id, default)).Bytes);
+        Assert.Equal(1, await f.Db.PensionDocuments.CountAsync()); Assert.Equal(1, await f.Db.PensionUploads.CountAsync());
+        Assert.Empty(await f.Db.PensionSnapshots.ToArrayAsync()); Assert.Empty(await f.Db.WealthRecords.ToArrayAsync());
+        Assert.False(retried.TryGetProperty("protectedOriginal", out _)); Assert.False(retried.TryGetProperty("previewJson", out _));
+        var report = retried.GetProperty("report").Deserialize<PensionReport>(Json)!;
+        var input = new PensionApproval(retried.GetProperty("version").GetString()!, new DateOnly(2024, 4, 12), report,
+            [new(report.Agreements[0].Key, null, null)], true, true);
+        await f.Service.Approve(id, input, default);
+        var approved = await f.Db.PensionUploads.SingleAsync();
+        Assert.Equal("PENSION_UPLOAD_ALREADY_APPROVED", (await Assert.ThrowsAsync<ApiFailure>(() =>
+            f.Service.Parse(id, Convert.ToBase64String(approved.Version), default))).Code);
+        Assert.Equal(1, await f.Db.PensionSnapshots.CountAsync());
+        var product = await f.Db.WealthRecords.SingleAsync(); Assert.Equal(927000, product.Value);
+        var repeated = Element(await f.Service.Upload(bytes, "application/pdf", false, default));
+        var repeatedReport = repeated.GetProperty("report").Deserialize<PensionReport>(Json)!;
+        var duplicate = Element(await f.Service.Approve(repeated.GetProperty("id").GetGuid(), new(
+            repeated.GetProperty("version").GetString()!, new DateOnly(2024, 4, 12), repeatedReport,
+            [new(repeatedReport.Agreements[0].Key, product.Id, Convert.ToBase64String(product.Version))], true, true), default));
+        Assert.True(duplicate.GetProperty("duplicate").GetBoolean());
+        Assert.Equal(2, await f.Db.PensionUploads.CountAsync()); Assert.Equal(1, await f.Db.PensionDocuments.CountAsync());
+        Assert.Equal(1, await f.Db.PensionSnapshots.CountAsync()); Assert.Single(await f.Db.WealthRecords.ToArrayAsync());
+    }
+    [Fact]
+    public async Task RejectedReceiptCannotBeReparsedOrChangeItsRetainedPreview()
+    {
+        await using var f = new Fixture(); await f.Init(); var receipt = await f.Upload();
+        var row = await f.Db.PensionUploads.SingleAsync(); row.Status = "Rejected"; await f.Db.SaveChangesAsync();
+        var before = row.PreviewJson;
+        Assert.Equal("PENSION_UPLOAD_REJECTED", (await Assert.ThrowsAsync<ApiFailure>(() =>
+            f.Service.Parse(row.Id, Convert.ToBase64String(row.Version), default))).Code);
+        Assert.Equal(before, row.PreviewJson); Assert.Equal("Rejected", row.Status);
+        Assert.Equal(1, await f.Db.PensionUploads.CountAsync()); Assert.Empty(await f.Db.PensionSnapshots.ToArrayAsync());
+    }
 }

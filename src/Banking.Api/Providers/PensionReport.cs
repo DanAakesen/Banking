@@ -25,9 +25,9 @@ public sealed record PensionReport(string ParserVersion, int Pages, DateOnly? Re
 
 // Only typed financial facts and fixed labels leave the extractor. Never return source lines,
 // PDF metadata, customer names, CPR, addresses, contacts, agreement numbers or document actions.
-public static class PensionReportParser
+public static partial class PensionReportParser
 {
-    public const string Version = "pensionsinfo-text-1";
+    public const string Version = "pensionsinfo-text-2";
     public const int MaxBytes = 8 * 1024 * 1024, MaxPages = 80;
     static readonly TimeSpan RegexLimit = TimeSpan.FromMilliseconds(100);
     static readonly string[] Providers = ["PFA", "Danica", "Velliv", "Nordea Pension", "Sampension", "PensionDanmark",
@@ -60,7 +60,7 @@ public static class PensionReportParser
         return DateOnly.TryParse(match.Value, CultureInfo.GetCultureInfo("da-DK"), DateTimeStyles.AllowWhiteSpaces, out var date)
             && date.Year >= 1900 ? date : null;
     }
-    sealed record Word(string Text, double X, double Y);
+    sealed record Word(string Text, double X, double Y, double Right);
     sealed record Line(string Text, Word[] Words);
     sealed class Group(string key, string provider)
     {
@@ -95,7 +95,7 @@ public static class PensionReportParser
             letters += page.Letters.Count;
             Check.That(page.Letters.Count <= 60_000 && letters <= 600_000, "PENSION_PDF_TEXT_LIMIT");
             progress?.Invoke("ReadingWords", number, letters);
-            var words = page.GetWords().Select(w => new Word(w.Text, w.BoundingBox.Left, w.BoundingBox.Bottom)).ToArray();
+            var words = page.GetWords().Select(w => new Word(w.Text, w.BoundingBox.Left, w.BoundingBox.Bottom, w.BoundingBox.Right)).ToArray();
             var rows = new List<List<Word>>();
             foreach (var word in words.OrderByDescending(w => w.Y).ThenBy(w => w.X))
             {
@@ -116,6 +116,8 @@ public static class PensionReportParser
         var payouts = new Dictionary<int, List<PensionPayout>>(); var insurance = new List<PensionInsurance>();
         var warnings = new List<PensionWarning>(); DateOnly? reportDate = null; PensionSource? reportDateSource = null, assumptionsSource = null;
         var beforeTax = false; var todaysMoney = false; var recognizedPages = new HashSet<int>(); int? lastScenarioAge = null;
+        var layoutPages = ExtractLayouts(pages, groups, providerTotals, payouts, insurance, warnings, ct);
+        recognizedPages.UnionWith(layoutPages);
         for (var p = 0; p < pages.Count; p++)
         {
             ct.ThrowIfCancellationRequested(); var page = p + 1; var lines = pages[p];
@@ -126,6 +128,13 @@ public static class PensionReportParser
             var monthly = Has(pageText, @"måned|maned|pr\.?\s*md");
             if (Has(pageText, @"forudsæt|forudsat|alle.*beløb|alle.*belob"))
             { beforeTax |= Has(pageText, @"før skat|for skat"); todaysMoney |= Has(pageText, @"nutidskron|dagens (?:penge|pris)|købekraft|kobekraft"); assumptionsSource = new(page, "Projection assumptions", "Terms"); }
+            if (layoutPages.Contains(page))
+            {
+                foreach (var line in lines)
+                    if (reportDate is null && Has(line.Text, @"rapportdato|udskrevet|rapport dannet|oprettet den") && Date(line.Text) is DateOnly date)
+                    { reportDate = date; reportDateSource = new(page, "Report date", "Date", "Reported", date); }
+                continue;
+            }
             var lineNumber = 0;
             foreach (var line in lines)
             {
