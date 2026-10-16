@@ -16,6 +16,7 @@ public sealed class WealthRecord : Entity
     public decimal? AnnualPension { get; set; }
     public int? RetirementAge { get; set; }
     [System.Text.Json.Serialization.JsonIgnore] public string? PensionSourceKey { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public string? StockSourceKey { get; set; }
 }
 public sealed record WealthInput(string Name, string Provider, string Kind, decimal Value, string Currency, DateOnly AsOf,
     string SourceNote, decimal? AnnualPension = null, int? RetirementAge = null, string? Version = null);

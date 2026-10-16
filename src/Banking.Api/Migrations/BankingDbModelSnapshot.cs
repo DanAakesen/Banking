@@ -985,6 +985,174 @@ namespace Banking.Api.Migrations
                     b.ToTable("Transfers");
                 });
 
+            modelBuilder.Entity("Banking.Api.Services.EmployeeStockDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ByteLength")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DemoScope")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasDefaultValue("");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<byte[]>("ProtectedOriginal")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<bool>("Synthetic")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DemoScope", "Hash")
+                        .IsUnique();
+
+                    b.ToTable("EmployeeStockDocuments");
+                });
+
+            modelBuilder.Entity("Banking.Api.Services.EmployeeStockSnapshot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("ApprovedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateOnly>("AsOf")
+                        .HasColumnType("date");
+
+                    b.Property<string>("DataJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DemoScope")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasDefaultValue("");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReviewHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("SourceIdentityKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid?>("SupersedesId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UploadId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid?>("WealthRecordId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("UploadId");
+
+                    b.HasIndex("DemoScope", "AsOf");
+
+                    b.HasIndex("DemoScope", "SupersedesId")
+                        .IsUnique()
+                        .HasFilter("[SupersedesId] IS NOT NULL");
+
+                    b.HasIndex("DemoScope", "DocumentId", "ReviewHash")
+                        .IsUnique();
+
+                    b.ToTable("EmployeeStockSnapshots");
+                });
+
+            modelBuilder.Entity("Banking.Api.Services.EmployeeStockUpload", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DemoScope")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasDefaultValue("");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("ParserVersion")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("PreviewJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("SnapshotId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SourceIdentityKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTimeOffset>("UploadedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.ToTable("EmployeeStockUploads");
+                });
+
             modelBuilder.Entity("Banking.Api.Services.LoanRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1302,6 +1470,10 @@ namespace Banking.Api.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<string>("StockSourceKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<decimal>("Value")
                         .HasPrecision(19, 4)
                         .HasColumnType("decimal(19,4)");
@@ -1317,6 +1489,10 @@ namespace Banking.Api.Migrations
                     b.HasIndex("DemoScope", "PensionSourceKey")
                         .IsUnique()
                         .HasFilter("[PensionSourceKey] IS NOT NULL");
+
+                    b.HasIndex("DemoScope", "StockSourceKey")
+                        .IsUnique()
+                        .HasFilter("[StockSourceKey] IS NOT NULL");
 
                     b.HasIndex("DemoScope", "Kind", "Provider", "Name")
                         .IsUnique();
@@ -1441,6 +1617,30 @@ namespace Banking.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Account");
+                });
+
+            modelBuilder.Entity("Banking.Api.Services.EmployeeStockSnapshot", b =>
+                {
+                    b.HasOne("Banking.Api.Services.EmployeeStockDocument", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Banking.Api.Services.EmployeeStockUpload", null)
+                        .WithMany()
+                        .HasForeignKey("UploadId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Banking.Api.Services.EmployeeStockUpload", b =>
+                {
+                    b.HasOne("Banking.Api.Services.EmployeeStockDocument", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Banking.Api.Services.PensionSnapshot", b =>

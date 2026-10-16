@@ -13,8 +13,8 @@ public sealed class PensionSchemaTests
     public void MigrationIsAdditiveAndGateRequiresItsExactIdentity()
     {
         using var db=new BankingDb(new DbContextOptionsBuilder<BankingDb>().UseSqlServer("Server=fixture.invalid;Database=Fixture;Encrypt=true").Options);
-        var migrations=db.Database.GetMigrations().ToArray();Assert.Equal(PensionSchemaGate.Migration,migrations[^1]);
-        var sql=db.GetService<IMigrator>().GenerateScript(migrations[^2],migrations[^1],MigrationsSqlGenerationOptions.Idempotent);
+        var migrations=db.Database.GetMigrations().ToArray();Assert.Contains(PensionSchemaGate.Migration,migrations);
+        var sql=db.GetService<IMigrator>().GenerateScript(migrations[Array.IndexOf(migrations,PensionSchemaGate.Migration)-1],PensionSchemaGate.Migration,MigrationsSqlGenerationOptions.Idempotent);
         foreach(var table in new[]{"PensionDocuments","PensionUploads","PensionSnapshots"})Assert.Contains("CREATE TABLE ["+table+"]",sql);
         Assert.Contains("ALTER TABLE [WealthRecords] ADD [PensionSourceKey]",sql);
         Assert.DoesNotContain("DROP TABLE",sql);Assert.DoesNotContain("UPDATE [WealthRecords]",sql);Assert.DoesNotContain("DELETE FROM",sql);

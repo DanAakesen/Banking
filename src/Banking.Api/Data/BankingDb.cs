@@ -12,8 +12,9 @@ public sealed class BankingDb(DbContextOptions<BankingDb> options, Workspace? wo
         foreach (var entry in ChangeTracker.Entries<Entity>())
         {
             if (entry.Entity is Banking.Api.Services.PensionDocument or Banking.Api.Services.PensionSnapshot
+                or Banking.Api.Services.EmployeeStockDocument or Banking.Api.Services.EmployeeStockSnapshot
                 && entry.State is EntityState.Modified or EntityState.Deleted)
-                throw new InvalidOperationException("Pension originals and accepted snapshots are immutable.");
+                throw new InvalidOperationException("Original documents and accepted snapshots are immutable.");
             if (entry.State == EntityState.Added) entry.Entity.DemoScope = CurrentDemoScope;
             else if (entry.State is EntityState.Modified or EntityState.Deleted && entry.Entity.DemoScope != CurrentDemoScope)
                 throw new InvalidOperationException("Cross-session writes are forbidden.");
@@ -36,6 +37,9 @@ public sealed class BankingDb(DbContextOptions<BankingDb> options, Workspace? wo
     public DbSet<Banking.Api.Services.PensionDocument> PensionDocuments => Set<Banking.Api.Services.PensionDocument>();
     public DbSet<Banking.Api.Services.PensionUpload> PensionUploads => Set<Banking.Api.Services.PensionUpload>();
     public DbSet<Banking.Api.Services.PensionSnapshot> PensionSnapshots => Set<Banking.Api.Services.PensionSnapshot>();
+    public DbSet<Banking.Api.Services.EmployeeStockDocument> EmployeeStockDocuments => Set<Banking.Api.Services.EmployeeStockDocument>();
+    public DbSet<Banking.Api.Services.EmployeeStockUpload> EmployeeStockUploads => Set<Banking.Api.Services.EmployeeStockUpload>();
+    public DbSet<Banking.Api.Services.EmployeeStockSnapshot> EmployeeStockSnapshots => Set<Banking.Api.Services.EmployeeStockSnapshot>();
     public DbSet<Banking.Api.Services.ResearchItem> ResearchItems => Set<Banking.Api.Services.ResearchItem>();
     public DbSet<ReviewAction> ReviewActions => Set<ReviewAction>();
     public DbSet<ClassificationChange> ClassificationChanges => Set<ClassificationChange>();
@@ -79,6 +83,22 @@ public sealed class BankingDb(DbContextOptions<BankingDb> options, Workspace? wo
         model.Entity<Banking.Api.Services.PensionSnapshot>().HasOne<Banking.Api.Services.PensionUpload>().WithMany().HasForeignKey(x => x.UploadId);
         model.Entity<Banking.Api.Services.PensionSnapshot>().HasIndex(x => new { x.DemoScope, x.AsOf });
         model.Entity<Banking.Api.Services.WealthRecord>().HasIndex(x => new { x.DemoScope, x.Kind, x.Provider, x.Name }).IsUnique();
+        model.Entity<Banking.Api.Services.WealthRecord>().Property(x => x.StockSourceKey).HasMaxLength(64);
+        model.Entity<Banking.Api.Services.WealthRecord>().HasIndex(x => new { x.DemoScope, x.StockSourceKey }).IsUnique().HasFilter("[StockSourceKey] IS NOT NULL");
+        model.Entity<Banking.Api.Services.EmployeeStockDocument>().Property(x => x.Hash).HasMaxLength(64);
+        model.Entity<Banking.Api.Services.EmployeeStockDocument>().HasIndex(x => new { x.DemoScope, x.Hash }).IsUnique();
+        model.Entity<Banking.Api.Services.EmployeeStockDocument>().Property(x => x.ProtectedOriginal).HasColumnType("varbinary(max)");
+        model.Entity<Banking.Api.Services.EmployeeStockUpload>().Property(x => x.SourceIdentityKey).HasMaxLength(64);
+        model.Entity<Banking.Api.Services.EmployeeStockSnapshot>().Property(x => x.SourceIdentityKey).HasMaxLength(64);
+        model.Entity<Banking.Api.Services.EmployeeStockUpload>().Property(x => x.PreviewJson).HasColumnType("nvarchar(max)").Metadata.SetMaxLength(null);
+        model.Entity<Banking.Api.Services.EmployeeStockUpload>().HasOne<Banking.Api.Services.EmployeeStockDocument>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<Banking.Api.Services.EmployeeStockSnapshot>().Property(x => x.DataJson).HasColumnType("nvarchar(max)").Metadata.SetMaxLength(null);
+        model.Entity<Banking.Api.Services.EmployeeStockSnapshot>().Property(x => x.ReviewHash).HasMaxLength(64);
+        model.Entity<Banking.Api.Services.EmployeeStockSnapshot>().HasIndex(x => new { x.DemoScope, x.DocumentId, x.ReviewHash }).IsUnique();
+        model.Entity<Banking.Api.Services.EmployeeStockSnapshot>().HasIndex(x => new { x.DemoScope, x.AsOf });
+        model.Entity<Banking.Api.Services.EmployeeStockSnapshot>().HasIndex(x => new { x.DemoScope, x.SupersedesId }).IsUnique().HasFilter("[SupersedesId] IS NOT NULL");
+        model.Entity<Banking.Api.Services.EmployeeStockSnapshot>().HasOne<Banking.Api.Services.EmployeeStockUpload>().WithMany().HasForeignKey(x => x.UploadId).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<Banking.Api.Services.EmployeeStockSnapshot>().HasOne<Banking.Api.Services.EmployeeStockDocument>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Restrict);
         model.Entity<Account>().Property(x => x.CustomName).HasMaxLength(200);
         model.Entity<Account>().Property(x => x.BankDetailsJson).HasMaxLength(12000);
         model.Entity<BankTransaction>().Property(x => x.BankDetailsJson).HasMaxLength(12000);
