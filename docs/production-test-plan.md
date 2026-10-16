@@ -617,3 +617,14 @@ Engineering evidence is recorded in docs/saxo-market-data.md. Isolated browser f
 | DEMO-REPAIR-03 | September income 53,225 DKK, expenses 39,876 DKK. Preserve two manually cleared 850 DKK categories; exclude the two unmatched savings pairs. | Applied and ledger/API verified. The 1,700 DKK remaining uncategorized is preserved manual input. |
 | DEMO-REPAIR-04 | Compare Summary, Accounts, cash flow, all categories, budget links/actuals, savings, balances and goal journeys over relevant periods; repeat repair produces no financial writes. | 40 periods, five accounts, four budget/month combinations and three journeys reconcile; full second apply is a no-op. |
 | DEMO-REPAIR-05 | Inspect deployed corrected Demo 360 spending-by-category, Accounts, Budgets, Goals and Review at 1440/1024/390 px with dark/light themes and Danish mobile. No financial writes during browser acceptance. | PASS: 24 live screenshots; no financial writes, overflow, page errors or CSP violations. Runtime receipt in `artifacts/demo-repair/browser/`; owner/presentation-device acceptance remains separate. |
+
+## Employee-share dashboard / fictional Demo — 16 October 2026
+
+[Source evidence and guarded setup contract](employee-stock-dashboard.md). Main completed the earlier authentic owner retained-import acceptance on `aa689cd2`; no private contents or declaration belong in this plan. This dashboard/Demo increment is source-only, pending reviewed publication and explicit setup.
+
+| ID | Required hosted acceptance | State |
+|---|---|---|
+| STOCK-DASH-01 | Verify exact reviewed runtime/assets/CSP; compare summary + calendar chart with Accounts at 1440/1024/390 px, EN/DA and light/dark. Select month/year, exact date points and USD/DKK without extra backend/provider requests. | 24 synthetic cloud browser combinations pass; hosted check pending. |
+| STOCK-DASH-02 | Fresh Demo-only exact-build dry-run, inspect fixed fictional three-report plan, explicit normal-API apply, then repeat dry-run/apply no-op. Require one current mapped product, three canonical dates, originals and protected unrelated baseline. | Protocol/service tests pass; production application held for Main. |
+| STOCK-DASH-03 | Demo/anonymous/forged-Live cannot access owner receipts/snapshots/originals or writes; owner path cannot expose Demo originals. No raw original/PII in ordinary DTOs/advisor. | Isolated service/HTTP tests pass; existing release isolation smoke remains required. |
+| STOCK-DASH-04 | Existing authenticated owner approved record/current/history/original stays unchanged; chart local controls and navigation create no financial writes or false dirty prompt. Preserve pension, cash, Saxo and manual data. | Synthetic retained regression passes; Main performs private hosted acceptance without reimport. |
