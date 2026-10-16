@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {upcomingStockEvents,stockIllustration,employeeStockQuote} from '../../src/Banking.Api/wwwroot/employee-stock-ui.js';
+import {upcomingStockEvents,stockIllustration,employeeStockQuote,renderEmployeeStockReport} from '../../src/Banking.Api/wwwroot/employee-stock-ui.js';
 test('upcoming uses explicit inclusive cutoff, matching source delivery and conditional quantity, never current holdings',()=>{
  const report={schedules:[{date:'2025-11-30',shares:15,matchedPastVesting:15},{date:'2026-10-16',shares:12.5,matchedPastVesting:0},{date:'2029-11-30',shares:15,matchedPastVesting:0}]};
  assert.deepEqual(upcomingStockEvents(report,'2026-10-16').map(s=>[s.date,s.conditionalShares]),[['2026-10-16',12.5],['2029-11-30',15]]);
@@ -25,4 +25,23 @@ test('optional MSFT research quote validates exact listing/currency/time while h
  assert.deepEqual(employeeStockQuote(q,now),{price:241,observedAt:'2026-10-16T11:45:00.000Z',retrievedAt:'2026-10-16T11:59:00.000Z',delayMinutes:15});
  assert.equal(employeeStockQuote({...q,quoteDelayMinutes:null},now).delayMinutes,null);
  for(const change of [{symbol:'MSFT:other'},{currency:'DKK'},{source:'Other'},{assetType:'FxSpot'},{price:0},{price:Infinity},{quoteStatus:'stale'},{quoteStatus:'denied'},{quoteTime:null},{retrievedAt:'2026-10-16T11:00:00Z'},{quoteTime:'2026-10-01T12:00:00Z'},{quoteTime:'2026-10-17T12:00:00Z'},{quoteDelayMinutes:-1}])assert.equal(employeeStockQuote({...q,...change},now),null);
+});
+
+for(const lang of ['en','da'])test(`historical money cells render currency markup, preserve unknowns and escape source text (${lang})`,()=>{
+ const payload='<img src=x onerror=alert(1)>',source={sheet:payload,row:2};
+ const report={parserVersion:'synthetic',warnings:[],schedules:[],
+  grants:[0,null,payload].map((grantPrice,i)=>({key:'g'+i,type:payload,awardDate:'2024-03-01',awarded:10,vested:1,unvested:9,grantPrice,source})),
+  transactions:[1234.5,null,payload].map((historicalFairMarketValue,i)=>({grantKey:'g'+i,date:'2025-03-03',quantity:1,netShares:1,historicalFairMarketValue,source}))};
+ const e=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const format=n=>new Intl.NumberFormat(lang==='da'?'da-DK':'en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
+ // Same markup-producing formatter contract as app.js, rather than a plain-text test double.
+ const money=(n,c)=>n==null?'—':`<span class="money">${format(n)}<span class="money-currency"> ${e(c)}</span></span>`;
+ const field={value:'',valueAsNumber:NaN,validity:{valid:true}},chart={innerHTML:''};
+ const root={innerHTML:'',querySelector:id=>id==='#stock-live-quote'?null:id==='#stock-cutoff'?{...field,value:'2026-10-16'}:id==='#stock-chart'?chart:field,querySelectorAll:()=>[]};
+ renderEmployeeStockReport(root,report,{S:{seq:1,mode:'Demo',owner:false,lang},e,money,date:x=>x,today:()=>'2026-10-16'});
+ assert.ok(root.innerHTML.includes(`<td>${money(1234.5,'USD')}</td>`));
+ assert.ok(root.innerHTML.includes(`<td>${money(0,'USD')}</td>`)); // Known zero grant price is not an unknown/current quote.
+ assert.ok((root.innerHTML.match(/<td>—<\/td>/g)||[]).length>=4); // Missing and nonnumeric money never becomes NaN or markup.
+ assert.doesNotMatch(root.innerHTML,/&lt;span class=&quot;money|<img|onerror="|NaN|Infinity/);
+ assert.ok(root.innerHTML.includes(e(payload))); // Text columns retain escaping, including sheet/type labels.
 });

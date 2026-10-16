@@ -59,6 +59,14 @@ const controlledNow=new Date('2026-10-16T12:00:00Z');
   await page.goto(origin+'/#/accounts');await ready();await inspect('accounts');await page.goto(origin+'/#/investments');await ready();await page.waitForSelector('#employee-stock-file');await inspect('empty-saxo-unavailable');
   await page.locator('#manual-investment-add').click();await page.waitForSelector('#wealth-form');await page.locator('#overlay [data-action=close]').click();
   await upload(0);assert.equal(approved,0);assert.equal(await page.locator('#stock-review-form [name=wealth]').isDisabled(),true);await page.locator('#stock-cutoff').fill('2026-10-16');assert.match(await page.locator('#stock-chart').innerText(),/90[.,]375/);await page.locator('#stock-live-quote').click();await page.waitForFunction(()=>/unavailable|utilgængelig/.test(document.querySelector('#stock-quote-status').textContent));assert.match(await page.locator('#stock-chart').innerText(),/90[.,]375/);await inspect('pending-review');
+  // Real app money() returns trusted markup; historical tables must render it while retaining text escaping.
+  const past=page.locator('#stock-source-facts > details').first();await past.locator(':scope > summary').click();
+  const tables=past.locator('table'),fmv=tables.nth(0).locator('tbody tr').first().locator('td').nth(3),grantPrice=tables.nth(1).locator('tbody tr').first().locator('td').nth(3);
+  assert.equal(await fmv.locator('span.money').count(),1);assert.equal(await grantPrice.locator('span.money').count(),1);
+  assert.equal((await fmv.locator('.money-currency').innerText()).trim(),'USD');assert.equal((await grantPrice.locator('.money-currency').innerText()).trim(),'USD');
+  const numeric=new Intl.NumberFormat(lang==='da'?'da-DK':'en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
+  assert.equal(await fmv.innerText(),numeric.format(218.75)+' USD');assert.equal(await grantPrice.innerText(),numeric.format(0)+' USD');
+  assert.doesNotMatch(await past.innerText(),/<span|&lt;span/);await inspect('historical-money');
   await approve(0);assert.equal(approved,1);assert.match(await page.locator('#stock-current').innerText(),/0/);
   assert.equal(await page.locator('#stock-cutoff').inputValue(),'2026-10-16');assert.equal(fixtures['earlier-approved'].accepted.review.reportAsOf,'2026-10-01');
   const approvedText=await page.locator('#stock-source-facts').innerText();assert.match(approvedText,lang==='en'?/Source report date: not reported.*Owner-confirmed report date/s:/Kildens rapportdato: ikke oplyst.*Ejerbekræftet rapportdato/s);assert.doesNotMatch(approvedText,/Report date: unknown|Rapportdato: ukendt/);
