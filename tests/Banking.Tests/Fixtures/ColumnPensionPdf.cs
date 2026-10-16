@@ -38,7 +38,7 @@ public static class ColumnPensionPdf
         }
     }
     public const string Reference = "87654321", AsOf = "12.04.2024";
-    public static byte[] Create(bool ambiguous = false, bool missingSavingsDate = false, bool conditional = false, bool wrapped = false, bool blankComponent = false)
+    public static byte[] Create(bool ambiguous = false, bool missingSavingsDate = false, bool conditional = false, bool wrapped = false, bool blankComponent = false, string criticalLayout = "right")
     {
         var builder = new LayoutPdf();
         string Amount(decimal value) => value.ToString("N0", CultureInfo.GetCultureInfo("da-DK"));
@@ -73,7 +73,13 @@ public static class ColumnPensionPdf
             if (p is >= 5 and <= 8)
             {
                 Text(p == 5 ? "Udbetaling ved død" : p == 6 ? "Udbetaling ved død til børn" : p == 7 ? "Udbetaling ved tab af arbejdsevne" : "Visse kritiske sygdomme", 30, 790);
-                Text(p == 7 ? "Mistet arbejdsevne" : "På én gang", 650, 760); if (p == 7) Text("Indtil 71 år", 900, 760);
+                Text(p == 7 ? "Mistet arbejdsevne" : "På én gang", p == 8 && criticalLayout != "right" ? 30 : 650, 760);
+                if (p == 8 && criticalLayout != "right")
+                {
+                    if (criticalLayout != "missing") Right("126.000 kr.", 1140, 760);
+                    if (criticalLayout == "ambiguous") Text("23.000 kr.", 650, 760);
+                    if (criticalLayout == "notes") Text("Supplerende note", 400, 760);
+                } if (p == 7) Text("Indtil 71 år", 900, 760);
                 if (p == 5)
                 {
                     Text("S ATP", 30, 730); Text("ATP Livslang Pension", 30, 715); Text("58.000 kr.", 650, 715);
@@ -86,6 +92,15 @@ public static class ColumnPensionPdf
                     Text("Om året i en årrække", 30, 730); Text("S PFA", 30, 700);
                     Text("188.000", 650, 700); Text(conditional ? "176.000" : "188.000", 900, 700);
                     Text(Reference + " Ophørende udbetaling", 30, 680);
+                }
+                else if (p == 8 && criticalLayout != "right")
+                {
+                    Text("F PFA", 30, 730);
+                    Right(criticalLayout == "bare" ? "126.000" : "126.000 kr.", criticalLayout == "misaligned" ? 900 : 1140, 730);
+                    if (criticalLayout == "multipleCells") Text("49.000", 800, 730);
+                    Text(Reference, 30, 710); Text("Engangsudbetaling", 30, 690);
+                    Text("Supplerende oplysninger", 30, 665); Right("349.000 kr.", 1140, 665);
+                    Text("I alt:", 30, 630); Right("126.000 kr.", 1140, 630);
                 }
                 else { Text("PFA", 30, 730); Text(p == 6 ? "74.000 kr." : "94.000 kr.", 650, 710); }
             }

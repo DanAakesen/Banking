@@ -227,7 +227,21 @@ public static partial class PensionReportParser
         var header = lines.FirstOrDefault(l => Has(l.Text, @"på én gang|pa en gang|mistet arbejdsevne"));
         if (header is null) return;
         var x = HeaderX(header, @"på én gang|pa en gang|mistet arbejdsevne")!.Value;
-        if (x < 100) { warnings.Add(new("INSURANCE_COLUMNS_REQUIRE_REVIEW", page, "Insurance")); return; }
+        double? numberRight = null, currencyRight = null;
+        if (x < 100)
+        {
+            // This one-column overview puts its subtotal beside a LEFT-side label. Use only
+            // that currency-bearing subtotal as geometry, never as an additional policy.
+            var number = Spans(header, @"(?<![\d/-])\d[\d.,]*(?=\s*(?:kr\.?|DKK)\b)");
+            var money = Spans(header, @"(?<![\d/-])\d[\d.,]*\s*(?:kr\.?|DKK)\b\.?");
+            var label = Spans(header, @"^(?:på én gang|pa en gang)");
+            if (risk != "CriticalIllness" || number.Length != 1 || money.Length != 1 || label.Length != 1
+                || Money(header.Text) is null || money[0].Left < label[0].Right + 100
+                || !Has(header.Text, @"^(?:på én gang|pa en gang)\s+\d[\d.,]*\s*(?:kr\.?|DKK)\.?\s*$"))
+            { warnings.Add(new("INSURANCE_COLUMNS_REQUIRE_REVIEW", page, "Insurance")); return; }
+            x = (label[0].Right + money[0].Left) / 2;
+            numberRight = number[0].Right; currencyRight = money[0].Right;
+        }
         var provider = ""; var index = 0;
         var annual = Has(string.Join(" ", lines.Select(l => l.Text)), "om året|om aret|årlig|arlig");
         var monthly = Has(string.Join(" ", lines.Select(l => l.Text)), "måned|maned");
@@ -237,8 +251,17 @@ public static partial class PensionReportParser
             if (found.Length > 0) provider = found;
             if (Has(label, @"^i alt|^om året|^om aret")) { provider = ""; continue; }
             if (provider.Length == 0) continue;
-            var amounts = line.Words.Where(w => w.X >= x && Has(w.Text, @"^\d[\d.,]*$"))
-                .Select(w => Amount(w.Text)).Where(v => v.HasValue).ToArray();
+            var numeric = line.Words.Where(w => w.X >= x && Has(w.Text, @"^\d[\d.,]*$")).ToArray();
+            if (numberRight.HasValue)
+            {
+                // Accept only a labelled provider observation aligned with the anchored amount
+                // column. Continuation references and arbitrary notes cannot supply a cover.
+                if (found.Length == 0 || !Has(label, @"^(?:[FST]\s+)?" + Regex.Escape(found) + @"\s*$")) continue;
+                if (numeric.Length != 1 || Amount(numeric[0].Text) is null
+                    || (Math.Abs(numeric[0].Right - numberRight.Value) > 6 && Math.Abs(numeric[0].Right - currencyRight!.Value) > 6))
+                { warnings.Add(new("INSURANCE_COLUMNS_REQUIRE_REVIEW", page, "Insurance")); continue; }
+            }
+            var amounts = numeric.Select(w => Amount(w.Text)).Where(v => v.HasValue).ToArray();
             if (amounts.Length == 0) continue;
             var distinct = amounts.Distinct().ToArray(); var value = distinct.Length == 1 ? distinct[0] : null;
             if (!value.HasValue) warnings.Add(new("INSURANCE_CONDITIONS_REQUIRE_ORIGINAL_REVIEW", page, "Insurance"));

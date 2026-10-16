@@ -27,7 +27,7 @@ public sealed record PensionReport(string ParserVersion, int Pages, DateOnly? Re
 // PDF metadata, customer names, CPR, addresses, contacts, agreement numbers or document actions.
 public static partial class PensionReportParser
 {
-    public const string Version = "pensionsinfo-text-2";
+    public const string Version = "pensionsinfo-text-3";
     public const int MaxBytes = 8 * 1024 * 1024, MaxPages = 80;
     static readonly TimeSpan RegexLimit = TimeSpan.FromMilliseconds(100);
     static readonly string[] Providers = ["PFA", "Danica", "Velliv", "Nordea Pension", "Sampension", "PensionDanmark",
