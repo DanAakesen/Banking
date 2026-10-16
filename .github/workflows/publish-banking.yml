@@ -109,7 +109,7 @@ jobs:
         id: upload
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: banking-release-${{ steps.source.outputs.sha }}
+          name: banking-release-${{ steps.source.outputs.sha }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/banking-release/${{ steps.source.outputs.sha }}
           if-no-files-found: error
           retention-days: 7
@@ -256,7 +256,7 @@ jobs:
         if: always() && steps.capture.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: banking-release-evidence-${{ needs.validate-and-package.outputs.source_sha }}
+          name: banking-release-evidence-${{ needs.validate-and-package.outputs.source_sha }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/banking-evidence/*.json
           if-no-files-found: warn
           retention-days: 30
@@ -363,7 +363,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: banking-schema-diagnostic-${{ needs.validate-and-package.outputs.source_sha }}
+          name: banking-schema-diagnostic-${{ needs.validate-and-package.outputs.source_sha }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/banking-schema-evidence/*.json
           if-no-files-found: warn
           retention-days: 7

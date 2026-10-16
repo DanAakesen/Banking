@@ -3,6 +3,7 @@ import http.client
 import importlib.util
 import io
 import json
+import re
 import socket
 import ssl
 import traceback
@@ -37,6 +38,35 @@ class DeploymentClock:
 
 
 class DeployBankingTests(unittest.TestCase):
+    def test_workflow_artifacts_are_attempt_unique_and_downloaded_by_immutable_id(self):
+        workflow = (MODULE_PATH.parents[1] / ".github/workflows/publish-banking.yml").read_text()
+        names = re.findall(
+            r"uses: actions/upload-artifact@[^\n]+\n        with:\n          name: ([^\n]+)",
+            workflow,
+        )
+        expected = [
+            "banking-release-${{ steps.source.outputs.sha }}",
+            "banking-release-evidence-${{ needs.validate-and-package.outputs.source_sha }}",
+            "banking-schema-diagnostic-${{ needs.validate-and-package.outputs.source_sha }}",
+        ]
+        self.assertEqual(names, [name + "-attempt-${{ github.run_attempt }}" for name in expected])
+        rendered = {
+            name.replace("${{ steps.source.outputs.sha }}", "a" * 40)
+                .replace("${{ needs.validate-and-package.outputs.source_sha }}", "a" * 40)
+                .replace("${{ github.run_attempt }}", str(attempt))
+            for name in names for attempt in (1, 2)
+        }
+        self.assertEqual(len(rendered), 6)
+        self.assertIn("artifact_id: ${{ steps.upload.outputs.artifact-id }}", workflow)
+        self.assertIn("artifact_digest: ${{ steps.upload.outputs.artifact-digest }}", workflow)
+        deploy_job, diagnostic_job = workflow.split("\n  deploy:\n", 1)[1].split("\n  schema-diagnostic:\n", 1)
+        for job in (deploy_job, diagnostic_job):
+            self.assertIn("ARTIFACT_ID: ${{ needs.validate-and-package.outputs.artifact_id }}", job)
+            self.assertIn("ARTIFACT_DIGEST: ${{ needs.validate-and-package.outputs.artifact_digest }}", job)
+            self.assertIn('gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"', job)
+        self.assertNotIn("actions/download-artifact", workflow)
+        self.assertNotIn("overwrite:", workflow)
+
     def response(self, body, headers=None):
         response = MagicMock()
         response.__enter__.return_value = response
