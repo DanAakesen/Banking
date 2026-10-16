@@ -121,6 +121,27 @@ public sealed class EmployeeStockHistoryTests
         Assert.Equal(2,await f.Db.EmployeeStockSnapshots.CountAsync());Assert.DoesNotContain("stockSourceKey",JsonSerializer.Serialize(row,Json));
     }
     [Fact]
+    public async Task DatedDkkPerUsdApprovalConvertsOnlyConfirmedHeldSharesAndUpdatesOneMappedProduct()
+    {
+        await using var f=new PensionHistoryTests.Fixture();await f.Init();var one=await Upload(f);
+        var review=Review(12.5m,true) with{PriceUsd=200,PriceAsOf=new(2026,10,1),PriceSource="Synthetic USD per share quote",
+            DkkPerUsd=6.25m,FxAsOf=new(2026,10,2),FxSource="Synthetic DKK per one USD rate"};
+        var saved=E(await Service(f).Approve(one.GetProperty("id").GetGuid(),Approval(one,review),default));
+        f.Db.ChangeTracker.Clear();var row=await f.Db.WealthRecords.SingleAsync();var productId=row.Id;
+        Assert.True(saved.GetProperty("wealthUpdated").GetBoolean());Assert.Equal("DKK",row.Currency);
+        Assert.Equal(15625m,row.Value); // 12.5 owner-declared shares * 200 USD/share * 6.25 DKK/USD
+        var snapshot=E(await Service(f).Snapshot(saved.GetProperty("snapshotId").GetGuid(),default)).GetProperty("accepted").GetProperty("review");
+        Assert.Equal(6.25m,snapshot.GetProperty("dkkPerUsd").GetDecimal());Assert.Equal("2026-10-02",snapshot.GetProperty("fxAsOf").GetString());
+        Assert.Equal(200,snapshot.GetProperty("priceUsd").GetDecimal());Assert.Equal("2026-10-01",snapshot.GetProperty("priceAsOf").GetString());
+        var two=await Upload(f);var next=review with{ReportAsOf=new(2026,10,15),HoldingAsOf=new(2026,10,15),CurrentHeldShares=10,
+            PriceUsd=240,PriceAsOf=new(2026,10,14),DkkPerUsd=6.5m,FxAsOf=new(2026,10,14),
+            WealthRecordId=productId,WealthVersion=Convert.ToBase64String(row.Version)};
+        await Service(f).Approve(two.GetProperty("id").GetGuid(),Approval(two,next),default);
+        f.Db.ChangeTracker.Clear();row=await f.Db.WealthRecords.SingleAsync();Assert.Equal(productId,row.Id);Assert.Equal(15600m,row.Value);
+        Assert.Equal(2,await f.Db.EmployeeStockSnapshots.CountAsync());
+        Assert.Equal(2,E(await Service(f).History(0,default)).GetProperty("development").GetArrayLength());
+    }
+    [Fact]
     public void ReviewRequiresDatedDeclarationAndFiniteBoundedValuationProvenance()
     {
         var today=new DateOnly(2026,10,15);
