@@ -1,3 +1,4 @@
+import {mountEmployeeStockPreview} from './employee-stock-ui.js';
 import {mountPensionImports} from './pension-import-ui.js';
 import {beginSaxoSignIn,finishSaxoSignIn,saxoEnvironment,rememberSaxoEnvironment,saxoAuthKind,saxoAuthStatus,saxoAuthView,saxoAuthMarkup,saxoAuthApply,saxoDelayLabel,saxoResponseMeta,saxoRetainedSnapshot,saxoUpdateFailed,saxoClock,saxoGapNote,saxoLivePoll,SAXO_SHORT_RANGES,SAXO_LIVE_REFRESH_MS} from './saxo-session.js';
 // Legacy JSON preview helper; retained uploads use the private pension history endpoint.
@@ -26,11 +27,20 @@ export function statementAmount(value,lang='en') {
 export function createWealthUI({S,t,e,money,date,today,api,post,header,input,button,dialog,leave,navigate,errorText,confirmAction,validateForms,composeScene}) {
  const investments=createInvestmentWorkspace({S,e,money,api,post,header,errorText,composeScene});
  const L=(en,da)=>S.lang==='da'?da:en;
- let records=[];
+ let records=[],disposeEmployeeStock=()=>{};
  const amountInput=v=>v==null?'':String(v).replace('.',S.lang==='da'?',':'.');
  const age=x=>Math.floor((Date.parse(today())-Date.parse(x))/86400000);
  async function render(main,kind) {
-  if(kind==='Investment')return investments.render(main);
+  if(kind==='Investment'){
+   const seq=S.seq;const broker=investments.render(main).catch(err=>{if(seq===S.seq&&main.isConnected)main.querySelector('.inv-workspace').textContent=errorText(err);});if(seq!==S.seq||!main.isConnected)return;
+   main.insertAdjacentHTML('beforeend','<section id="employee-stock-preview"></section><section id="manual-investments" class="loan-card"><h2>'+L('Other recorded investments','Andre registrerede investeringer')+'</h2><div id="manual-investment-values"></div><button id="manual-investment-add" type="button">+ '+L('Add statement value','Tilføj værdi fra opgørelse')+'</button></section>');
+   disposeEmployeeStock=mountEmployeeStockPreview(main.querySelector('#employee-stock-preview'),{S,e,money,date,today,api});
+   main.querySelector('#manual-investment-add').onclick=()=>edit('Investment');
+   try{const all=await api('wealth');if(seq!==S.seq||!main.isConnected)return;records=all.filter(x=>x.kind==='Investment');
+    main.querySelector('#manual-investment-values').innerHTML=records.map(x=>`<div class="wealth-row"><div><strong>${e(x.name)}</strong><small>${e(x.provider)} · ${date(x.asOf)}</small></div><strong>${money(x.value,x.currency)}</strong><button data-manual-edit="${e(x.id)}">${t('Edit')}</button></div>`).join('')||'<p>'+L('No external statement values recorded. An empty list can be correct.','Ingen eksterne opgørelsesværdier registreret. En tom liste kan være korrekt.')+'</p>';
+    main.querySelectorAll('[data-manual-edit]').forEach(b=>b.onclick=()=>edit('Investment',records.find(x=>x.id===b.dataset.manualEdit)));
+   }catch(err){if(seq===S.seq&&main.isConnected)main.querySelector('#manual-investment-values').textContent=errorText(err);}await broker;return;
+  }
   const seq=S.seq;
   const [all,summary,saxo]=await Promise.all([api('wealth'),api('wealth/summary?currency='+S.currency),kind==='Investment'?api('investments/saxo/status'):null]);
   if(seq!==S.seq||!main.isConnected)return;records=all.filter(x=>x.kind===kind);
@@ -74,7 +84,7 @@ export function createWealthUI({S,t,e,money,date,today,api,post,header,input,but
  async function editResearch(x){
   if(!await leave())return;dialog.className='creation-modal';dialog.innerHTML=`<div class="creation-header"><h2>${L('Watchlist idea','Idé til observationslisten')}</h2>${button('Close','close')}</div><form id="research-form" class="form loan-form">${input('research-name','Name',x?.name||'','text','required maxlength="120"')}${input('research-symbol',L('Symbol / identifier','Symbol / identifikation'),x?.symbol||'','text','required maxlength="24"')}${input('research-url',L('Research source (HTTPS, optional)','Kilde (HTTPS, valgfri)'),x?.url||'','url','maxlength="1000"')}<label for="research-notes">${L('Questions and notes','Spørgsmål og noter')}</label><textarea id="research-notes" rows="5" maxlength="4000">${e(x?.notes||'')}</textarea><p class="error" role="alert"></p><button class="primary" type="submit">${t('Save changes')}</button></form>`;dialog.showModal();validateForms();const f=dialog.querySelector('form');f.oninput=()=>S.dirty=true;f.onsubmit=async ev=>{ev.preventDefault();ev.stopPropagation();if(!f.reportValidity()||S.saving)return;S.saving=true;try{const v=id=>f.querySelector('#research-'+id).value;await post(x?'research/'+x.id:'research',{name:v('name'),symbol:v('symbol'),notes:v('notes'),url:v('url'),version:x?.version},x?'PUT':'POST');S.dirty=false;dialog.close();await navigate();}catch(err){f.querySelector('.error').textContent=errorText(err);}finally{S.saving=false;}};
  }
- return {render,markets,dispose:investments.dispose};
+ return {render,markets,dispose:()=>{disposeEmployeeStock();disposeEmployeeStock=()=>{};investments.dispose();}};
 }
 
 // Account totals are broker values, not sums of pending orders or research prices.

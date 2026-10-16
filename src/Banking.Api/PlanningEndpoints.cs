@@ -15,6 +15,7 @@ public static class PlanningEndpoints
     public static void MapPlanningApi(this WebApplication app)
     {
         app.MapPensionApi();
+        app.MapEmployeeStockApi();
         app.MapGet("/api/investments/saxo/portfolio", (string? environment,Banking.Api.Providers.SaxoReadClient client,Banking.Api.Providers.SaxoOrders orders,Workspace w,IHostEnvironment host,CancellationToken ct)=>{
             var market=SaxoEnvironment(environment,w,host);
             return Banking.Api.Providers.SaxoPortfolio.Read(()=>client.Read(ct,market),()=>client.Activity(ct,market),ct,market);});
