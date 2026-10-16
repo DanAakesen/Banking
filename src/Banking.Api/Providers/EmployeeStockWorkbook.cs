@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
 using System.Xml.Linq;
+using System.Text.RegularExpressions;
 
 namespace Banking.Api.Providers;
 
@@ -24,6 +25,7 @@ public sealed record EmployeeStockReport(string ParserVersion, DateOnly? ReportA
 public static class EmployeeStockWorkbook
 {
     public const string Version = "employee-stock-xlsx-1";
+    public const int MaxXmlNodes = 300000;
     public const int MaxBytes = 8 * 1024 * 1024, MaxExpanded = 32 * 1024 * 1024, MaxPart = 8 * 1024 * 1024;
     public static readonly string[][] Headers = [
         ["Awardee ID","Last Name","First Name","Award ID","Award Date","Award Type","Awarded","Award Price","Vested","Unvested","Total Transacted","Expiration Date"],
@@ -51,7 +53,7 @@ public static class EmployeeStockWorkbook
         Require(bytes.Length >= 4 && bytes[0] == 'P' && bytes[1] == 'K' && bytes[2] == 3 && bytes[3] == 4, "FILE_TYPE");
         using var input = new MemoryStream(bytes, false); using var zip = new ZipArchive(input, ZipArchiveMode.Read);
         Require(zip.Entries.Count is > 0 and <= 256, "PACKAGE_LIMIT");
-        var parts = new Dictionary<string, XDocument>(StringComparer.OrdinalIgnoreCase); long expanded = 0;
+        var parts = new Dictionary<string, XDocument>(StringComparer.OrdinalIgnoreCase); long expanded = 0; int xmlNodes = 0;
         foreach (var entry in zip.Entries)
         {
             budget(); var name = entry.FullName;
@@ -64,7 +66,7 @@ public static class EmployeeStockWorkbook
             data.Position = 0;
             using var reader = XmlReader.Create(data, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = MaxPart, IgnoreComments = true, IgnoreProcessingInstructions = true });
             // Validate depth before constructing an in-memory tree.
-            while (reader.Read()) { budget(); Require(reader.Depth <= 32, "XML_DEPTH"); }
+            while (reader.Read()) { budget(); Require(reader.Depth <= 32, "XML_DEPTH"); xmlNodes += 1 + reader.AttributeCount; Require(xmlNodes <= MaxXmlNodes, "XML_NODE_LIMIT"); }
             data.Position = 0;
             using var treeReader = XmlReader.Create(data, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = MaxPart });
             var doc = XDocument.Load(treeReader); parts.Add(name, doc);
@@ -123,7 +125,7 @@ public static class EmployeeStockWorkbook
         var grants = new List<StockGrant>(); var schedules = new List<StockSchedule>(); var transactions = new List<StockTransaction>(); var warnings = new List<StockWarning>();
         var joins = new Dictionary<string, StockGrant>(StringComparer.Ordinal);
         string Key(string id) { Require(id.Length is > 0 and <= 120, "AWARD_REFERENCE"); return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("employee-stock-v1\0" + people[0] + "\0" + id))).ToLowerInvariant(); }
-        string Kind(Row r, int index) { var raw = r.Get(index).ToLowerInvariant().Replace(" ", "").Replace("-", ""); return raw switch { "onhire" or "onhiresa" => "OnHire", "annual" or "annualsa" or "sa" => "Annual", _ => Unknown() }; string Unknown() { warnings.Add(new("AWARD_TYPE_UNSUPPORTED", r.Source)); return "Other"; } }
+        string Kind(Row r, int index) { if (Regex.IsMatch(r.Get(index), @"\AFY(?:[0-9]{2}|[0-9]{4}) Annual SA\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)) return "Annual"; var raw = r.Get(index).ToLowerInvariant().Replace(" ", "").Replace("-", ""); return raw switch { "onhire" or "onhiresa" => "OnHire", "annual" or "annualsa" or "sa" => "Annual", _ => Unknown() }; string Unknown() { warnings.Add(new("AWARD_TYPE_UNSUPPORTED", r.Source)); return "Other"; } }
         foreach (var r in tables[0])
         {
             budget(); var key = Key(r.Get(3)); Require(!joins.ContainsKey(key), "DUPLICATE_GRANT");

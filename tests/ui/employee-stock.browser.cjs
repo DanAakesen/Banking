@@ -46,6 +46,10 @@ const csp="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'sel
   await page.locator('#stock-price').fill('200');await page.locator('#stock-rate').fill('6.25');assert.doesNotMatch(await page.locator('#stock-chart').innerText(),/18[,. ]?075/);
   await page.locator('#stock-observed').fill('2026-10-16');await page.locator('#stock-price-source').fill('Synthetic reviewed manual quote');assert.match(await page.locator('#stock-chart').innerText(),/18[,. ]?075/);
   await inspect('preview');
+  await page.locator('#stock-price').fill('1000001');assert.equal(await page.locator('#stock-price').evaluate(el=>el.validity.valid),false);assert.doesNotMatch(await page.locator('#stock-chart').innerText(),/18[,. ]?075|Infinity/);
+  await page.locator('#stock-price').fill('200');await page.locator('#stock-rate').fill('10001');assert.equal(await page.locator('#stock-rate').evaluate(el=>el.validity.valid),false);assert.doesNotMatch(await page.locator('#stock-chart').innerText(),/112[,. ]?968|Infinity/);
+  await page.locator('#stock-rate').fill('6.25');await page.locator('#stock-observed').fill('1899-01-01');assert.equal(await page.locator('#stock-observed').evaluate(el=>el.validity.valid),false);assert.doesNotMatch(await page.locator('#stock-chart').innerText(),/18[,. ]?075|Infinity/);
+  await page.locator('#stock-observed').fill('2026-10-16');
   const wrap=page.locator('.stock-table-wrap').first();await wrap.focus();await page.keyboard.press('ArrowRight');assert.equal(await wrap.getAttribute('tabindex'),'0');
   const select=page.locator('#inv-environment');await select.selectOption('LIVE');assert.equal(await page.locator('#stock-cutoff').count(),1);assert.equal(await page.locator('#employee-stock-file').isEnabled(),true);
   // New malformed preview clears prior successful facts, and a retry still works.

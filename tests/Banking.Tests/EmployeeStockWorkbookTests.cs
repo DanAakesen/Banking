@@ -103,4 +103,27 @@ public sealed class EmployeeStockWorkbookTests
         });
         Assert.StartsWith("STOCK_",Assert.Throws<ApiFailure>(()=>EmployeeStockWorkbook.Parse(bytes)).Code);
     }
+    [Theory]
+    [InlineData("FY31 Annual SA")][InlineData("FY2033 Annual SA")]
+    public void SupportedExportFiscalYearAwardTypesAreMinimizedToAnnual(string kind)
+    {
+        var report=EmployeeStockWorkbook.Parse(SyntheticStockWorkbook.Create(rows=>{rows[0][1][5]=kind;foreach(var row in rows[1].Where(r=>(string?)r[3]=="00004124"))row[5]=kind;rows[2][1][9]=kind;}));
+        Assert.Equal("Annual",report.Grants[1].Type);Assert.DoesNotContain(report.Warnings,w=>w.Code=="AWARD_TYPE_UNSUPPORTED");
+        Assert.DoesNotContain(kind,JsonSerializer.Serialize(report));
+    }
+    [Theory]
+    [InlineData("FYX Annual SA")][InlineData("FY20333 Annual SA")][InlineData("secret free text")]
+    public void UnknownAwardTypesNeverEchoUntrustedRawLabels(string kind)
+    {
+        var report=EmployeeStockWorkbook.Parse(SyntheticStockWorkbook.Create(rows=>rows[0][1][5]=kind));
+        Assert.Equal("Other",report.Grants[1].Type);Assert.Contains(report.Warnings,w=>w.Code=="AWARD_TYPE_UNSUPPORTED");Assert.DoesNotContain(kind,JsonSerializer.Serialize(report));
+    }
+    [Fact]
+    public void XmlNodeLimitIsAggregateAndCheckedBeforeBuildingOversizedTrees()
+    {
+        var xml="<x>"+string.Concat(Enumerable.Repeat("<n/>",EmployeeStockWorkbook.MaxXmlNodes/2))+"</x>";
+        var bytes=SyntheticStockWorkbook.Create(package:p=>{p["docProps/part-a.xml"]=xml;p["docProps/part-b.xml"]=xml;},compression:System.IO.Compression.CompressionLevel.NoCompression);
+        Assert.True(bytes.Length<EmployeeStockWorkbook.MaxBytes);
+        Assert.Equal("STOCK_XML_NODE_LIMIT",Assert.Throws<ApiFailure>(()=>EmployeeStockWorkbook.Parse(bytes)).Code);
+    }
 }

@@ -34,7 +34,7 @@ internal static class SyntheticStockWorkbook
             [ Tx("00004123","2026-03-02",10.125m,2.125m,8m,"2024-02-29","On-Hire"),
               Tx("00004124","2025-12-01",15m,3m,12m,"2024-11-30","Annual SA") ] ];
     }
-    internal static byte[] Create(Action<object?[][][]>? change = null, Action<Dictionary<string,string>>? package = null)
+    internal static byte[] Create(Action<object?[][][]>? change = null, Action<Dictionary<string,string>>? package = null, CompressionLevel compression = CompressionLevel.Optimal)
     {
         var rows=Rows();change?.Invoke(rows);var parts=new Dictionary<string,string>();
         const string ns="http://schemas.openxmlformats.org/spreadsheetml/2006/main", rel="http://schemas.openxmlformats.org/package/2006/relationships", dr="http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -60,6 +60,6 @@ internal static class SyntheticStockWorkbook
         parts["xl/_rels/workbook.xml.rels"]=$"<Relationships xmlns='{rel}'>"+string.Concat(Enumerable.Range(1,3).Select(i=>$"<Relationship Id='s{i}' Type='{dr}/worksheet' Target='worksheets/sheet{i}.xml'/>"))+"</Relationships>";
         parts["[Content_Types].xml"]="<Types xmlns='http://schemas.openxmlformats.org/package/2006/content-types'><Default Extension='xml' ContentType='application/xml'/></Types>";
         package?.Invoke(parts);
-        using var output=new MemoryStream();using(var zip=new ZipArchive(output,ZipArchiveMode.Create,true))foreach(var (name,xml) in parts){using var writer=new StreamWriter(zip.CreateEntry(name).Open(),new UTF8Encoding(false));writer.Write(xml);}return output.ToArray();
+        using var output=new MemoryStream();using(var zip=new ZipArchive(output,ZipArchiveMode.Create,true))foreach(var (name,xml) in parts){using var writer=new StreamWriter(zip.CreateEntry(name,compression).Open(),new UTF8Encoding(false));writer.Write(xml);}return output.ToArray();
     }
 }
