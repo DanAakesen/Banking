@@ -37,7 +37,9 @@ public static class EmployeeStockWorkbook
     static readonly XNamespace Rel = "http://schemas.openxmlformats.org/package/2006/relationships";
     static readonly XNamespace DocRel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     static void Require(bool condition, string code) { if (!condition) throw new ApiFailure(400, "STOCK_" + code); }
-    public static EmployeeStockReport Parse(byte[] bytes, CancellationToken ct = default)
+    public static EmployeeStockReport Parse(byte[] bytes, CancellationToken ct = default) => ParsePrivate(bytes, ct).Report;
+    internal sealed record Extraction(EmployeeStockReport Report, string IdentityKey);
+    internal static Extraction ParsePrivate(byte[] bytes, CancellationToken ct = default)
     {
         var watch = Stopwatch.StartNew();
         void Budget() { ct.ThrowIfCancellationRequested(); Require(watch.Elapsed < TimeSpan.FromSeconds(10), "TIME_LIMIT"); }
@@ -47,7 +49,7 @@ public static class EmployeeStockWorkbook
         catch (Exception ex) when (ex is InvalidDataException or XmlException or FormatException or OverflowException or ArgumentException)
         { throw new ApiFailure(400, "STOCK_INVALID_WORKBOOK"); }
     }
-    static EmployeeStockReport Extract(byte[] bytes, Action budget)
+    static Extraction Extract(byte[] bytes, Action budget)
     {
         budget(); Require(bytes.Length <= MaxBytes, "FILE_TOO_LARGE");
         Require(bytes.Length >= 4 && bytes[0] == 'P' && bytes[1] == 'K' && bytes[2] == 3 && bytes[3] == 4, "FILE_TYPE");
@@ -159,7 +161,8 @@ public static class EmployeeStockWorkbook
             }
         }
         warnings.Add(new("CURRENT_HOLDINGS_NOT_REPORTED")); warnings.Add(new("PROFILE_CURRENCY_AND_ISSUER_NOT_REPORTED")); warnings.Add(new("REPORT_DATE_NOT_REPORTED")); warnings.Add(new("TAX_OBSERVATIONS_NOT_TAX_SETTLEMENT"));
-        return new(Version, null, null, null, null, null, grants.ToArray(), schedules.ToArray(), transactions.ToArray(), warnings.Distinct().ToArray());
+        return new(new EmployeeStockReport(Version, null, null, null, null, null, grants.ToArray(), schedules.ToArray(), transactions.ToArray(), warnings.Distinct().ToArray()),
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("employee-stock-identity-v1\0" + people[0]))).ToLowerInvariant());
     }
     static string Text(XElement element) => string.Concat(element.Descendants(Main + "t").Select(e => e.Value));
     static bool SafePath(string value) => value.Length is > 0 and <= 200 && !value.StartsWith('/') && !value.Contains('\\') && !value.Contains(':') && !value.Contains('%') && value.Split('/').All(p => p.Length > 0 && p is not "." and not "..");

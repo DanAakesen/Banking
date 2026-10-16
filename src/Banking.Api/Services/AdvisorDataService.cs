@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Banking.Api.Services;
 
-public sealed class AdvisorDataService(BankingDb db, GoalService goals, BudgetPlanService budgets, PlanningService planning, Workspace workspace, TimeProvider clock, WealthService wealth)
+public sealed class AdvisorDataService(BankingDb db, GoalService goals, BudgetPlanService budgets, PlanningService planning, Workspace workspace, TimeProvider clock, WealthService wealth, EmployeeStockImportService? employeeStocks=null)
 {
     public async Task<object> Read(DateOnly? from, DateOnly? to, string? currency, CancellationToken ct)
     {
@@ -26,6 +26,7 @@ public sealed class AdvisorDataService(BankingDb db, GoalService goals, BudgetPl
             goalContext = await goals.AdvisorContext(ct), budgets = await budgets.List(ct), activeBudget = await budgets.Active(ct), budgetProgress = progress,
             actuals = await planning.AccountInsights(start, end, unit, null, ct),
             wealth = await wealth.Summary(unit, ct), statements = await wealth.List(ct),
+            employeeShares = workspace.Mode=="Live"&&employeeStocks is not null ? await employeeStocks.AdvisorContext(ct) : null,
             watchlist = await db.ResearchItems.AsNoTracking().OrderByDescending(x => x.UpdatedAt).Take(100)
                 .Select(x => new { x.Id, x.Name, x.Symbol, x.Notes, x.Url, x.UpdatedAt }).ToArrayAsync(ct),
             dataOrigin = workspace.Mode == "Demo" ? "Synthetic demo workspace" : "Owner workspace",

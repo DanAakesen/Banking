@@ -10,10 +10,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
 
 namespace Banking.Tests;
 
-public sealed class EmployeeStockEndpointTests
+public sealed partial class EmployeeStockEndpointTests
 {
     sealed class Env : Microsoft.Extensions.Hosting.IHostEnvironment
     {
@@ -23,15 +24,22 @@ public sealed class EmployeeStockEndpointTests
     sealed class Host : IAsyncDisposable
     {
         public WebApplication App=null!;public BrowserSessions Sessions=null!;
-        public async Task Init()
+        Microsoft.Data.Sqlite.SqliteConnection? keeper;
+        public async Task Init(bool retained=false)
         {
             var b=WebApplication.CreateBuilder(new WebApplicationOptions{EnvironmentName="Production"});b.WebHost.UseTestServer();
             b.Configuration.AddInMemoryCollection(new Dictionary<string,string?>{["Cloud:Origin"]="https://banking.fixture",["EnableBanking:Enabled"]="true"});
             b.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
             b.Services.AddSingleton(s=>new BrowserSessions(TimeProvider.System,new Env(),b.Configuration,s.GetRequiredService<IDataProtectionProvider>()));
             b.Services.AddSingleton<LocalToken>();b.Services.AddSingleton<WorkspaceCatalog>();b.Services.AddScoped<Workspace>();
-            // Deliberately no BankingDb, repository, provider or advisor. Preview must work without them.
-            App=b.Build();App.Use(async(ctx,next)=>{try{await next();}catch(ApiFailure f){ctx.Response.StatusCode=f.Status;await ctx.Response.WriteAsJsonAsync(new{error=f.Code});}});
+            if(retained){
+                keeper=new Microsoft.Data.Sqlite.SqliteConnection("Data Source=stock-http-"+Guid.NewGuid()+";Mode=Memory;Cache=Shared;Pooling=False");await keeper.OpenAsync();
+                b.Services.AddScoped(s=>new Banking.Api.Data.BankingDb(PensionHistoryTests.Options(keeper.ConnectionString),s.GetRequiredService<Workspace>()));
+                b.Services.AddScoped<EmployeeStockImportService>();b.Services.AddSingleton<TimeProvider>(new PensionHistoryTests.Clock());
+                await using var db=new Banking.Api.Data.BankingDb(PensionHistoryTests.Options(keeper));await db.Database.EnsureCreatedAsync();
+            }
+            // Default preview fixture has deliberately no BankingDb, repository, provider or advisor. Preview must work without them.
+            App=b.Build();App.Use(async(ctx,next)=>{try{await next();}catch(ApiFailure f){ctx.Response.StatusCode=f.Status;await ctx.Response.WriteAsJsonAsync(new{error=f.Code,details=f.Details});}catch(DbUpdateConcurrencyException){ctx.Response.StatusCode=409;await ctx.Response.WriteAsJsonAsync(new{error="VERSION_CONFLICT"});}});
             App.UseMiddleware<LocalAccessMiddleware>();App.UseMiddleware<WorkspaceMiddleware>();App.MapEmployeeStockApi();
             await App.StartAsync();Sessions=App.Services.GetRequiredService<BrowserSessions>();
         }
@@ -40,7 +48,7 @@ public sealed class EmployeeStockEndpointTests
             var c=App.GetTestClient();c.BaseAddress=new("https://banking.fixture");c.DefaultRequestHeaders.Add("X-Banking-Mode",mode);c.DefaultRequestHeaders.Add("X-Banking-Client","web");
             if(origin)c.DefaultRequestHeaders.Add("Origin","https://banking.fixture");if(role is not null)c.DefaultRequestHeaders.Add("Cookie",BrowserSessions.Cookie+"="+Sessions.Create(role));return c;
         }
-        public ValueTask DisposeAsync()=>App.DisposeAsync();
+        public async ValueTask DisposeAsync(){await App.DisposeAsync();if(keeper is not null)await keeper.DisposeAsync();}
     }
     static ByteArrayContent Workbook(byte[]? bytes=null,string? type=null)
     {var c=new ByteArrayContent(bytes??SyntheticStockWorkbook.Create());c.Headers.ContentType=new(type??EmployeeStockEndpoints.MediaType);return c;}
@@ -70,7 +78,7 @@ public sealed class EmployeeStockEndpointTests
     {
         await using var h=new Host();await h.Init();using var c=h.Client();
         var r=await c.PostAsync("/api/employee-stocks/preview",Workbook(SyntheticStockWorkbook.Create(rows=>rows[2][0][0]="SECRET_PERSON")));
-        Assert.Equal("{\"error\":\"STOCK_MIXED_AWARDEES\"}",await r.Content.ReadAsStringAsync());
+        var error=await r.Content.ReadAsStringAsync();using var parsed=JsonDocument.Parse(error);Assert.Equal("STOCK_MIXED_AWARDEES",parsed.RootElement.GetProperty("error").GetString());Assert.DoesNotContain("SECRET",error);Assert.Equal(JsonValueKind.Null,parsed.RootElement.GetProperty("details").ValueKind);
         Assert.Equal(HttpStatusCode.OK,(await c.PostAsync("/api/employee-stocks/preview",Workbook())).StatusCode);
     }
     [Fact]

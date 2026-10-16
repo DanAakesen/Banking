@@ -18,6 +18,7 @@ public sealed class TransportTests : IAsyncLifetime
     {
         using var module=await client.GetAsync("/employee-stock-ui.js");Assert.Equal(HttpStatusCode.OK,module.StatusCode);
         Assert.Contains("mountEmployeeStockPreview",await module.Content.ReadAsStringAsync());
+        using var retained=await client.GetAsync("/employee-stock-history-ui.js");Assert.Equal(HttpStatusCode.OK,retained.StatusCode);Assert.Contains("mountEmployeeStockHistory",await retained.Content.ReadAsStringAsync());
         upstream.Responder=request=>{
             Assert.Equal("/api/employee-stocks/preview",request.Uri.AbsolutePath);Assert.Equal("Live",request.GetValues("X-Banking-Mode").Single());
             var response=new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent("{}",Encoding.UTF8,"application/json")};
