@@ -149,6 +149,25 @@ class MainContainerSchemaTests(unittest.TestCase):
         self.assertEqual((result["completed"], result["verified"], result["exitCode"]), (True, False, 2))
         self.assertEqual(result["scope"], ["Demo", "Live"])
 
+    def test_real_wrapper_preserves_fixed_cli_codes_without_exposing_remote_output(self):
+        remote, request = self.transport()
+        with remote, request:
+            self.stage()
+            for code, labels in deploy.SCHEMA_GATE_FAILURES.items():
+                with self.subTest(code=code):
+                    self.environment["SCHEMA_STUB_EXIT"] = str(code)
+                    previous = set(self.evidence.glob("schema-*-result.json"))
+                    with self.assertRaises(deploy.ReleaseError) as caught:
+                        self.check()
+                    self.assertIn("/".join(labels), str(caught.exception))
+                    self.assertNotIn("SYNTHETIC_PRIVATE", str(caught.exception))
+                    created = set(self.evidence.glob("schema-*-result.json")) - previous
+                    self.assertEqual(len(created), 1)
+                    result = json.loads(created.pop().read_text())
+                    self.assertFalse(result["verified"])
+                    self.assertEqual((result["exitCode"], result["failedScope"], result["failedStage"], result["failureCategory"]), (code, *labels))
+                    self.assertNotIn("SYNTHETIC_PRIVATE", json.dumps(result))
+
     def test_timed_out_schema_process_cannot_pass(self):
         self.environment["SCHEMA_STUB_EXIT"] = "124"  # GNU timeout's terminal process status.
         remote, request = self.transport()
