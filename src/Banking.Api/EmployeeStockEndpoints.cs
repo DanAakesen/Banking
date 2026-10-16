@@ -64,6 +64,24 @@ public static class EmployeeStockEndpoints
             var original=await service.Original(id,ct);context.Response.Headers.ContentSecurityPolicy="default-src 'none'; sandbox";
             return Results.File(original.Bytes,original.Type,"Employee-shares.xlsx",enableRangeProcessing:false);
         });
+        // Separate generated-sample route: private upload and owner API guards above are unchanged.
+        var demo=app.MapGroup("/api/employee-stocks/demo").AddEndpointFilter(async(context,next)=>{
+            var workspace=context.HttpContext.RequestServices.GetRequiredService<Workspace>();
+            if(workspace.Mode!="Demo")throw new ApiFailure(403,"STOCK_DEMO_ONLY");
+            context.HttpContext.Response.Headers.CacheControl="no-store, private";context.HttpContext.Response.Headers.Pragma="no-cache";
+            await context.HttpContext.RequestServices.GetRequiredService<EmployeeStockImportService>().ForSyntheticDemo(context.HttpContext.RequestAborted);
+            return await next(context);
+        });
+        demo.MapPost("/uploads",(DemoEmployeeStockUpload input,[FromServices] EmployeeStockImportService service,CancellationToken ct)=>WithReader(token=>service.UploadDemo(input.Version,token),ct));
+        demo.MapGet("/uploads",(int? offset,[FromServices] EmployeeStockImportService service,CancellationToken ct)=>service.History(offset??0,ct));
+        demo.MapGet("/uploads/{id:guid}",(Guid id,[FromServices] EmployeeStockImportService service,CancellationToken ct)=>service.Detail(id,ct));
+        demo.MapPost("/uploads/{id:guid}/approve",(Guid id,EmployeeStockApproval input,[FromServices] EmployeeStockImportService service,CancellationToken ct)=>service.Approve(id,input,ct));
+        demo.MapPost("/uploads/{id:guid}/link",(Guid id,EmployeeStockReuse input,[FromServices] EmployeeStockImportService service,CancellationToken ct)=>service.Reuse(id,input,ct));
+        demo.MapGet("/snapshots/{id:guid}",(Guid id,[FromServices] EmployeeStockImportService service,CancellationToken ct)=>service.Snapshot(id,ct));
+        demo.MapGet("/uploads/{id:guid}/original",async(Guid id,HttpContext context,[FromServices] EmployeeStockImportService service,CancellationToken ct)=>{
+            var original=await service.Original(id,ct);context.Response.Headers.ContentSecurityPolicy="default-src 'none'; sandbox";
+            return Results.File(original.Bytes,original.Type,"Fiktive-medarbejderaktier.xlsx",enableRangeProcessing:false);
+        });
     }
     static async Task<T> WithReader<T>(Func<CancellationToken,Task<T>> action,CancellationToken ct)
     {
@@ -73,3 +91,5 @@ public static class EmployeeStockEndpoints
         finally{Reader.Release();}
     }
 }
+
+public sealed record DemoEmployeeStockUpload(string Version);

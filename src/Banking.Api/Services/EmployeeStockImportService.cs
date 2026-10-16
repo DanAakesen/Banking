@@ -30,7 +30,17 @@ public sealed class EmployeeStockImportService(BankingDb db, Workspace workspace
     static readonly SemaphoreSlim Writers = new(1, 1);
     const string Mapping = "microsoft-employee-stock-v1";
     IDataProtector Protector => protection.CreateProtector("Banking.EmployeeStock.Original.v1", workspace.Mode, workspace.DemoScope);
-    void Owner() { if (workspace.Mode != "Live" || !workspace.OwnerAuthenticated) throw new ApiFailure(403, "OWNER_REQUIRED_FOR_PRIVATE_UPLOAD"); }
+    bool syntheticDemo;
+    // Only the separate Demo route can opt into this service instance. Private routes keep Owner().
+    internal async Task<EmployeeStockImportService> ForSyntheticDemo(CancellationToken ct)
+    {
+        if(workspace.Mode!="Demo")throw new ApiFailure(403,"STOCK_DEMO_ONLY");
+        Check.That(await db.Connections.AnyAsync(ct)&&!await db.Connections.AnyAsync(c=>!c.IsDemo||c.Provider!="product-demo",ct),"STOCK_PRODUCT_DEMO_REQUIRED");
+        syntheticDemo=true;return this;
+    }
+    IQueryable<EmployeeStockDocument> Documents()=>db.EmployeeStockDocuments.Where(d=>d.Synthetic==syntheticDemo);
+    IQueryable<EmployeeStockUpload> Uploads()=>db.EmployeeStockUploads.Where(u=>db.EmployeeStockDocuments.Any(d=>d.Id==u.DocumentId&&(d.Synthetic==syntheticDemo)));
+    void Owner() { if(syntheticDemo){if(workspace.Mode!="Demo")throw new ApiFailure(403,"STOCK_DEMO_ONLY");return;} if (workspace.Mode != "Live" || !workspace.OwnerAuthenticated) throw new ApiFailure(403, "OWNER_REQUIRED_FOR_PRIVATE_UPLOAD"); }
     DateOnly Today => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeBySystemTimeZoneId(clock.GetUtcNow(), "Europe/Copenhagen").DateTime);
     async Task<T> Write<T>(string resource, Func<Task<T>> action, CancellationToken ct)
     {
@@ -41,25 +51,36 @@ public sealed class EmployeeStockImportService(BankingDb db, Workspace workspace
             var result = await action(); await transaction.CommitAsync(ct); return result;
         } finally { Writers.Release(); }
     }
-    public async Task<object> Upload(byte[] bytes, CancellationToken ct)
+    public Task<object> Upload(byte[] bytes, CancellationToken ct)
+    {
+        if(syntheticDemo)throw new ApiFailure(403,"OWNER_REQUIRED_FOR_PRIVATE_UPLOAD");
+        Owner();return UploadCore(bytes,ct);
+    }
+    internal async Task<object> UploadDemo(string variant,CancellationToken ct)
+    {
+        Check.That(syntheticDemo&&workspace.Mode=="Demo","STOCK_DEMO_ONLY");
+        var bytes=DemoEmployeeStockWorkbook.Create(variant);
+        try{return await UploadCore(bytes,ct);}finally{Array.Clear(bytes);}
+    }
+    async Task<object> UploadCore(byte[] bytes,CancellationToken ct)
     {
         Owner();Check.That(bytes.Length is > 3 and <= EmployeeStockWorkbook.MaxBytes, "STOCK_FILE_TOO_LARGE");
         Check.That(bytes[0] == 'P' && bytes[1] == 'K' && bytes[2] == 3 && bytes[3] == 4, "STOCK_FILE_TYPE");
         var hash=Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
         var upload=await Write("upload:"+hash,async()=>{
-            var document=await db.EmployeeStockDocuments.SingleOrDefaultAsync(d=>d.Hash==hash,ct);
-            if(document is null){document=new(){Hash=hash,ByteLength=bytes.Length,ProtectedOriginal=Protector.Protect(bytes)};db.EmployeeStockDocuments.Add(document);}
+            var document=await Documents().SingleOrDefaultAsync(d=>d.Hash==hash,ct);
+            if(document is null){document=new(){Hash=hash,ByteLength=bytes.Length,Synthetic=syntheticDemo,ProtectedOriginal=Protector.Protect(bytes)};db.EmployeeStockDocuments.Add(document);}
             var receipt=new EmployeeStockUpload{DocumentId=document.Id,UploadedAt=clock.GetUtcNow()};db.EmployeeStockUploads.Add(receipt);
             await db.SaveChangesAsync(ct);return receipt;
         },ct);
         return await Parse(upload.Id,Convert.ToBase64String(upload.Version),ct);
     }
-    async Task<EmployeeStockUpload> Find(Guid id,CancellationToken ct)=>await db.EmployeeStockUploads.SingleOrDefaultAsync(u=>u.Id==id,ct)??throw new ApiFailure(404,"STOCK_UPLOAD_NOT_FOUND");
+    async Task<EmployeeStockUpload> Find(Guid id,CancellationToken ct)=>await Uploads().SingleOrDefaultAsync(u=>u.Id==id,ct)??throw new ApiFailure(404,"STOCK_UPLOAD_NOT_FOUND");
     static void Pending(EmployeeStockUpload upload) => Check.That(upload.Status is "Uploaded" or "NeedsReview" or "Unsupported", "STOCK_RECEIPT_FINAL");
     public async Task<object> Parse(Guid id,string version,CancellationToken ct)
     {
         Owner();var upload=await Find(id,ct);Pending(upload);GoalService.Version(db,upload,version);
-        var document=await db.EmployeeStockDocuments.AsNoTracking().SingleAsync(d=>d.Id==upload.DocumentId,ct);var bytes=Protector.Unprotect(document.ProtectedOriginal);
+        var document=await Documents().AsNoTracking().SingleAsync(d=>d.Id==upload.DocumentId,ct);var bytes=Protector.Unprotect(document.ProtectedOriginal);
         EmployeeStockWorkbook.Extraction? extracted=null;string? error=null;
         try{extracted=EmployeeStockWorkbook.ParsePrivate(bytes,ct);}catch(ApiFailure f){error=f.Code;}finally{Array.Clear(bytes);}
         await Write("receipt:"+id,async()=>{
@@ -72,39 +93,39 @@ public sealed class EmployeeStockImportService(BankingDb db, Workspace workspace
     }
     public async Task<object> Detail(Guid id,CancellationToken ct)
     {
-        Owner();var upload=await Find(id,ct);var document=await db.EmployeeStockDocuments.AsNoTracking().SingleAsync(d=>d.Id==upload.DocumentId,ct);
+        Owner();var upload=await Find(id,ct);var document=await Documents().AsNoTracking().SingleAsync(d=>d.Id==upload.DocumentId,ct);
         var snapshot=upload.SnapshotId.HasValue?await db.EmployeeStockSnapshots.AsNoTracking().SingleAsync(s=>s.Id==upload.SnapshotId,ct):null;
         var accepted=snapshot is null?null:JsonSerializer.Deserialize<EmployeeStockAccepted>(snapshot.DataJson,Json);
         var report=accepted?.Report??(upload.PreviewJson.Length==0?null:JsonSerializer.Deserialize<EmployeeStockReport>(upload.PreviewJson,Json));
         var existing=await db.EmployeeStockSnapshots.AsNoTracking().Where(s=>s.DocumentId==document.Id).OrderByDescending(s=>s.ApprovedAt).Select(s=>new{s.Id,s.AsOf,s.ApprovedAt}).FirstOrDefaultAsync(ct);
         var products=await db.WealthRecords.AsNoTracking().Where(w=>w.Kind=="Investment").Take(100).ToArrayAsync(ct);
         return new{upload.Id,upload.UploadedAt,upload.Status,upload.ErrorCode,upload.Version,upload.ParserVersion,document.ByteLength,
-            mediaType=EmployeeStockEndpoints.MediaType,report,accepted,upload.SnapshotId,existingApproval=existing,products,
+            document.Synthetic,mediaType=EmployeeStockEndpoints.MediaType,report,accepted,upload.SnapshotId,existingApproval=existing,products,
             suggestedProductId=products.SingleOrDefault(p=>p.StockSourceKey==Mapping)?.Id,financialSaved=snapshot is not null};
     }
     public async Task<(byte[] Bytes,string Type)> Original(Guid id,CancellationToken ct)
     {
-        Owner();var upload=await Find(id,ct);var document=await db.EmployeeStockDocuments.AsNoTracking().SingleAsync(d=>d.Id==upload.DocumentId,ct);
+        Owner();var upload=await Find(id,ct);var document=await Documents().AsNoTracking().SingleAsync(d=>d.Id==upload.DocumentId,ct);
         return (Protector.Unprotect(document.ProtectedOriginal),EmployeeStockEndpoints.MediaType);
     }
     public async Task<object> Snapshot(Guid id,CancellationToken ct)
     {
-        Owner();var row=await db.EmployeeStockSnapshots.AsNoTracking().SingleOrDefaultAsync(s=>s.Id==id,ct)??throw new ApiFailure(404,"STOCK_SNAPSHOT_NOT_FOUND");
+        Owner();var row=await db.EmployeeStockSnapshots.AsNoTracking().SingleOrDefaultAsync(s=>s.Id==id&&db.EmployeeStockDocuments.Any(d=>d.Id==s.DocumentId&&(d.Synthetic==syntheticDemo)),ct)??throw new ApiFailure(404,"STOCK_SNAPSHOT_NOT_FOUND");
         return new{row.Id,row.UploadId,row.AsOf,row.ApprovedAt,row.SupersedesId,accepted=JsonSerializer.Deserialize<EmployeeStockAccepted>(row.DataJson,Json)};
     }
-    IQueryable<EmployeeStockSnapshot> Canonical()=>db.EmployeeStockSnapshots.AsNoTracking().Where(s=>!db.EmployeeStockSnapshots.Any(n=>n.SupersedesId==s.Id));
+    IQueryable<EmployeeStockSnapshot> Canonical()=>db.EmployeeStockSnapshots.AsNoTracking().Where(s=>db.EmployeeStockDocuments.Any(d=>d.Id==s.DocumentId&&(d.Synthetic==syntheticDemo))&&!db.EmployeeStockSnapshots.Any(n=>n.SupersedesId==s.Id));
     public async Task<object> History(int offset,CancellationToken ct)
     {
         Owner();Check.That(offset is >=0 and <=100000,"INVALID_OFFSET");
-        var items=await (from u in db.EmployeeStockUploads.AsNoTracking() join d in db.EmployeeStockDocuments.AsNoTracking() on u.DocumentId equals d.Id orderby u.UploadedAt descending,u.Id
-            select new{u.Id,u.UploadedAt,u.Status,u.ErrorCode,u.ParserVersion,u.SnapshotId,d.ByteLength}).Skip(offset).Take(50).ToArrayAsync(ct);
+        var items=await (from u in Uploads().AsNoTracking() join d in Documents().AsNoTracking() on u.DocumentId equals d.Id orderby u.UploadedAt descending,u.Id
+            select new{u.Id,u.UploadedAt,u.Status,u.ErrorCode,u.ParserVersion,u.SnapshotId,d.ByteLength,d.Synthetic}).Skip(offset).Take(50).ToArrayAsync(ct);
         var snapshots=await Canonical().OrderByDescending(s=>s.AsOf).ThenByDescending(s=>s.ApprovedAt).Take(201).ToArrayAsync(ct);
         var development=snapshots.Take(200).Select(s=>{var data=JsonSerializer.Deserialize<EmployeeStockAccepted>(s.DataJson,Json)!;
             return new{s.Id,s.AsOf,s.ApprovedAt,currentHeldShares=data.Review.CurrentHeldShares,holdingAsOf=data.Review.HoldingAsOf,
                 reportedPastVested=data.Report.Grants.Sum(g=>g.Vested),reportedUnvested=data.Report.Grants.Sum(g=>g.Unvested),
                 returns=(decimal?)null,source="Approved dated report; no interpolation or inferred returns"};});
         var latest=snapshots.FirstOrDefault();
-        return new{total=await db.EmployeeStockUploads.CountAsync(ct),offset,items,development,developmentHasMore=snapshots.Length>200,
+        return new{total=await Uploads().CountAsync(ct),offset,items,development,developmentHasMore=snapshots.Length>200,
             current=latest is null?null:new{id=latest.Id,uploadId=latest.UploadId,asOf=latest.AsOf,approvedAt=latest.ApprovedAt,accepted=JsonSerializer.Deserialize<EmployeeStockAccepted>(latest.DataJson,Json)}};
     }
     public async Task<object> Reject(Guid id,string version,CancellationToken ct)
@@ -126,7 +147,7 @@ public sealed class EmployeeStockImportService(BankingDb db, Workspace workspace
             var upload=await Find(id,ct);Pending(upload);GoalService.Version(db,upload,input.Version);
             Check.That(upload.Status=="NeedsReview"&&upload.PreviewJson.Length>0&&upload.SourceIdentityKey is{Length:64},"STOCK_PREVIEW_REQUIRED");
             var report=JsonSerializer.Deserialize<EmployeeStockReport>(upload.PreviewJson,Json)!;
-            var data=new EmployeeStockAccepted(report,input.Review);var json=JsonSerializer.Serialize(data,Json);
+            var data=new EmployeeStockAccepted(report,input.Review,ProfileSource:syntheticDemo?"Fiktivt Demo-eksempel · gennemgået profil":"Owner-selected profile; not extracted from workbook");var json=JsonSerializer.Serialize(data,Json);
             var reviewHash=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json))).ToLowerInvariant();
             var duplicate=await db.EmployeeStockSnapshots.AsNoTracking().SingleOrDefaultAsync(s=>s.DocumentId==upload.DocumentId&&s.ReviewHash==reviewHash,ct);
             if(duplicate is not null){upload.Status="Approved";upload.SnapshotId=duplicate.Id;await db.SaveChangesAsync(ct);return new{snapshotId=duplicate.Id,duplicate=true,wealthUpdated=false};}
@@ -156,8 +177,8 @@ public sealed class EmployeeStockImportService(BankingDb db, Workspace workspace
         }
         var value=review.CurrentHeldShares==0?0:review.CurrentHeldShares!.Value*review.PriceUsd!.Value*(review.WealthCurrency=="DKK"?review.DkkPerUsd!.Value:1);
         Check.That(value is >=0 and <=100000000,"INVALID_WEALTH_VALUE");
-        row.StockSourceKey=Mapping;row.Name="Microsoft employee shares";row.Provider="Fidelity";row.Kind="Investment";row.Value=decimal.Round(value,2);row.Currency=review.WealthCurrency;
-        row.AsOf=review.HoldingAsOf!.Value;row.SourceNote="Owner-confirmed current holdings and dated reviewed valuation. Conditional shares excluded.";
+        row.StockSourceKey=Mapping;row.Name=syntheticDemo?"Microsoft-medarbejderaktier (fiktive)":"Microsoft employee shares";row.Provider="Fidelity";row.Kind="Investment";row.Value=decimal.Round(value,2);row.Currency=review.WealthCurrency;
+        row.AsOf=review.HoldingAsOf!.Value;row.SourceNote=syntheticDemo?"Fiktiv Demo-beholdning og dateret eksempelvurdering. Betingede aktier er udeladt.":"Owner-confirmed current holdings and dated reviewed valuation. Conditional shares excluded.";
         row.AnnualPension=null;row.RetirementAge=null;return row.Id;
     }
     internal static void Validate(EmployeeStockReview r,DateOnly today)
@@ -177,6 +198,7 @@ public sealed class EmployeeStockImportService(BankingDb db, Workspace workspace
     }
     public async Task<object?> AdvisorContext(CancellationToken ct)
     {
+        if(syntheticDemo)throw new ApiFailure(403,"OWNER_REQUIRED_FOR_PRIVATE_UPLOAD");
         Owner();var current=await Canonical().OrderByDescending(s=>s.AsOf).ThenByDescending(s=>s.ApprovedAt).FirstOrDefaultAsync(ct);if(current is null)return null;
         var accepted=JsonSerializer.Deserialize<EmployeeStockAccepted>(current.DataJson,Json)!;
         return new{source="Approved owner-reviewed employee-share snapshot",current.AsOf,current.ApprovedAt,issuer="Microsoft",currency="USD",

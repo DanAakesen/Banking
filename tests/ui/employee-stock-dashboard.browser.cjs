@@ -1,0 +1,55 @@
+// Cloud-only visual/interaction proof using real C# generated fictional Demo DTOs and originals.
+const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),{chromium}=require('playwright');
+const root=path.resolve(__dirname,'../../src/Banking.Api/wwwroot'),out=path.resolve(__dirname,'../../artifacts/employee-stock-demo-browser'),origin='https://banking.fixture';
+const csp="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; frame-src 'self' https://www.tradingview-widget.com";
+(async()=>{
+ const variants=['earlier','middle','later'],receipts=await Promise.all(variants.map(async v=>JSON.parse(await fs.readFile(path.join(out,v+'-approved.json'))))),history=JSON.parse(await fs.readFile(path.join(out,'history.json'))),valuationCases=await Promise.all(['unmapped-known','unmapped-unknown','unmapped-zero'].map(async v=>JSON.parse(await fs.readFile(path.join(out,v+'.json'))))),originals=await Promise.all(variants.map(v=>fs.readFile(path.join(out,v+'.xlsx'))));
+ const browser=await chromium.launch({headless:true,executablePath:'/usr/bin/chromium',args:['--no-sandbox']});let passed=0;
+ try{for(const width of [1440,1024,390])for(const theme of ['light','graphite'])for(const lang of ['en','da']){
+  const context=await browser.newContext({viewport:{width,height:1000},hasTouch:width===390,reducedMotion:'reduce'}),page=await context.newPage(),calls=[],errors=[];let override=null;
+  await page.clock.setFixedTime(new Date('2026-10-16T12:00:00Z'));page.on('pageerror',e=>errors.push(e.message));
+  await page.addInitScript(({theme,lang})=>{localStorage.setItem('banking.preferences.v1',JSON.stringify({theme,lang,aiGlass:false}));sessionStorage.setItem('banking.workspace','Demo');document.addEventListener('securitypolicyviolation',e=>(window.__csp||=[]).push(e.violatedDirective));},{theme,lang});
+  await page.route('**/*',async route=>{const req=route.request(),url=new URL(req.url());if(url.origin!==origin)return route.abort();
+   if(url.pathname.startsWith('/api/')){const p=url.pathname.slice(5);calls.push([req.method(),p]);assert.equal(req.method(),'GET','The Demo dashboard is read-only');assert.equal(req.headers()['x-banking-mode']||'Demo','Demo');let body={},status=200;
+    if(p==='browser/status')body={role:'Demo',passwordConfigured:true,localAdvisor:false};else if(p==='mode')body={mode:'Demo',availableModes:['Demo']};
+    else if(['accounts','categories','wealth','research'].includes(p))body=[];else if(p==='transactions')body={items:[],total:0};
+    else if(p==='account-insights')body={availableBalance:null,income:null,spending:null,net:null,retentionPercent:null,categories:[],coverage:{accountCount:0,sufficientHistory:false}};
+    else if(p==='employee-stocks/demo/uploads')body=override?{...history,current:{...history.current,uploadId:override.id,accepted:override.accepted}}:history;
+    else if(/^employee-stocks\/demo\/uploads\/[^/]+(?:\/original)?$/.test(p)){const all=[...receipts,...valuationCases],i=all.findIndex(r=>r.id===p.split('/')[3]);assert.ok(i>=0,'Only the selected synthetic receipt is read');if(p.endsWith('/original'))return route.fulfill({headers:{'X-Banking-Mode':'Demo','Cache-Control':'no-store, private','Content-Disposition':'attachment; filename="Fiktive-medarbejderaktier.xlsx"'},contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',body:originals[i]});body=all[i];}
+    else if(p==='investments/saxo/portfolio'){status=503;body={error:'SAXO_SIGN_IN_REQUIRED'};}
+    else throw Error('Unexpected Demo endpoint '+p);
+    return route.fulfill({status,contentType:'application/json',headers:{'X-Banking-Mode':'Demo','Cache-Control':'no-store, private'},body:JSON.stringify(body)});
+   }
+   if(url.pathname.startsWith('/advisor/'))return route.fulfill({contentType:'application/json',body:'{}'});
+   const file=path.resolve(root,'.'+(url.pathname==='/'?'/index.html':url.pathname));if(!file.startsWith(root+path.sep))return route.abort();
+   try{return route.fulfill({body:await fs.readFile(file),headers:{'Content-Security-Policy':csp},contentType:({'.js':'text/javascript','.css':'text/css','.html':'text/html','.webp':'image/webp','.svg':'image/svg+xml'})[path.extname(file)]||'application/octet-stream'});}catch{return route.fulfill({status:404,body:''});}
+  });
+  await page.goto(origin+'/#/investments');await page.waitForSelector('#stock-chart svg');await page.waitForFunction(()=>!document.querySelector('#main').hasAttribute('aria-busy'));
+  const section=page.locator('#employee-stock-preview');await section.evaluate(el=>el.scrollIntoView({block:'start'}));
+  assert.equal(await page.locator('#employee-stock-file,#stock-review-form').count(),0);assert.match(await page.locator('.stock-facts').innerText(),/42[.,]5/);assert.match(await page.locator('.stock-facts').innerText(),/152/);
+  assert.match(await page.locator('#stock-chart').innerText(),/64/);assert.match(await page.locator('#stock-point').innerText(),/30.*2026/);assert.match(await page.locator('#stock-point').innerText(),/10/);
+  assert.equal(await page.locator('#stock-valuation').getAttribute('open'),null);assert.equal(await page.locator('#stock-past').getAttribute('open'),null);assert.equal(await page.locator('#stock-report-details').getAttribute('open'),null);
+  const shape=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth>innerWidth+1,csp:window.__csp||[],edges:[...document.querySelectorAll('#employee-stock-preview *')].filter(el=>{const s=getComputedStyle(el),n=['Top','Right','Bottom','Left'].filter(k=>parseFloat(s['border'+k+'Width'])>0&&s['border'+k+'Style']!=='none').length;return n>0&&n<4;}).map(el=>el.className),height:document.querySelector('#stock-point').getBoundingClientRect().bottom-document.querySelector('#employee-stock-preview').getBoundingClientRect().top}));assert.equal(shape.overflow,false);assert.deepEqual(shape.csp,[]);assert.deepEqual(shape.edges,[]);assert.deepEqual(errors,[]);assert.ok(shape.height<(width===390?900:750),'Summary and chart fit the working viewport');
+  // All quantitative interactions are local. No quote, portfolio or other fetch per click.
+  const count=calls.length;await page.locator('#stock-currency').selectOption('USD');assert.match(await page.locator('.stock-chart-total').innerText(),/27[,. ]?200/);await page.locator('#stock-currency').selectOption('DKK');assert.match(await page.locator('.stock-chart-total').innerText(),/184[,. ]?960/);assert.equal((await page.locator('.stock-chart-total .money-currency').innerText()).trim(),'DKK');
+  await page.locator('#stock-range').selectOption('all');await page.locator('[data-period=year]').click();assert.match(await page.locator('.stock-chart-total').innerText(),/152/);assert.equal(await page.locator('.stock-bar').count(),5);
+  await page.locator('.stock-bar').first().focus();await page.keyboard.press('ArrowRight');assert.match(await page.locator('#stock-point').innerText(),/2027/);assert.equal(await page.locator('.stock-bar[aria-pressed=true]').count(),1);await page.keyboard.press('End');assert.match(await page.locator('#stock-point').innerText(),/2030/);
+  await page.locator('#stock-range').selectOption('history');assert.match(await page.locator('.stock-chart-total').innerText(),/280/);assert.ok(await page.locator('.stock-delivered').evaluateAll(nodes=>nodes.some(n=>Number(n.getAttribute('height'))>0)));assert.match(await page.locator('.stock-legend').innerText(),lang==='en'?/Vested history · not held now/:/Modningshistorik · ikke ejet nu/);assert.equal(calls.length,count);
+  // Return to monthly for review screenshots; explicit currency remains visible.
+  await page.locator('#stock-range').selectOption('12');await page.locator('[data-period=month]').click();if(width===390)await page.locator('.stock-bar[data-bin="2"]').tap();else await page.locator('.stock-bar[data-bin="2"]').click();assert.match(await page.locator('#stock-point').innerText(),/31.*2026/);assert.match(await page.locator('#stock-point').innerText(),/17[,. ]?340/);
+  await section.evaluate(el=>el.scrollIntoView({block:'start'}));await page.screenshot({path:path.join(out,`dashboard-${width}-${theme}-${lang}.png`),fullPage:false});
+  // Unknown valuation remains a useful share schedule. Source inputs never become financial edits.
+  await page.locator('#stock-valuation').evaluate(el=>el.open=true);await page.locator('#stock-rate').fill('10001');assert.match(await page.locator('.stock-chart-total').innerText(),lang==='en'?/Valuation unknown/:/Værdi ukendt/);assert.doesNotMatch(await page.locator('#stock-chart').innerText(),/Infinity|NaN/);await page.locator('#stock-rate').fill('6.8');
+  await page.locator('[data-stock-open=stock-history]').click();assert.equal(await page.locator('#stock-history-values tbody tr').count(),3);assert.equal(await page.locator('#stock-history-list [data-stock-upload]').count(),3);await page.locator('[data-stock-upload="'+receipts[0].id+'"]').click();await page.waitForFunction(id=>document.querySelector('#stock-source-facts .stock-report-date').textContent.includes('2026'),receipts[0].id);await page.waitForFunction(()=>document.querySelector('.stock-facts').textContent.includes('28'));assert.equal(await page.locator('#stock-cutoff').inputValue(),'2026-10-16');
+  await page.locator('#stock-report-details').evaluate(el=>el.open=true);const download=page.waitForEvent('download');await page.locator('#stock-original').click();assert.deepEqual(await fs.readFile(await (await download).path()),originals[0]);
+  await page.locator('#stock-show-current').click();await page.waitForFunction(()=>document.querySelector('.stock-facts').textContent.includes('42'));assert.deepEqual(errors,[]);assert.ok(calls.every(([method,p])=>method==='GET'&&!p.startsWith('employee-stocks/uploads')));
+  if(width===1440&&theme==='light')for(const [i,fixture] of valuationCases.entries()){
+   override=fixture;assert.equal(fixture.accepted.review.includeInWealth,false);await page.goto(origin+'/#/accounts');await page.waitForSelector('.atlas-workspace');await page.goto(origin+'/#/investments');await page.waitForSelector('#stock-chart svg');await page.locator('#stock-currency').selectOption('USD');
+   const usd=await page.locator('#stock-held-value').innerText();if(i===0)assert.match(usd,/2[,. ]?500/);else if(i===1){assert.match(usd,/—/);assert.doesNotMatch(usd,/0[.,]00/);}else assert.match(usd,/0[.,]00/);
+   await page.locator('#stock-currency').selectOption('DKK');const dkk=await page.locator('#stock-held-value').innerText();if(i===0)assert.match(dkk,/15[,. ]?625/);else if(i===1)assert.match(dkk,/—/);else assert.match(dkk,/0[.,]00/);
+  }
+  passed++;await context.close();
+ }
+ console.log(JSON.stringify({passed,viewports:[1440,1024,390],themes:['light','graphite'],languages:['en','da'],dtoSource:'Real C# independently fictional retained Demo reports',localChartInteractions:true,productionWrites:0,privateOriginalUsed:false}));
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

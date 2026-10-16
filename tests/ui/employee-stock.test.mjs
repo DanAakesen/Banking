@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {upcomingStockEvents,stockIllustration,employeeStockQuote,renderEmployeeStockReport} from '../../src/Banking.Api/wwwroot/employee-stock-ui.js';
+import {upcomingStockEvents,stockIllustration,employeeStockQuote,stockTimeline,stockHoldingIllustration,renderEmployeeStockReport} from '../../src/Banking.Api/wwwroot/employee-stock-ui.js';
 test('upcoming uses explicit inclusive cutoff, matching source delivery and conditional quantity, never current holdings',()=>{
  const report={schedules:[{date:'2025-11-30',shares:15,matchedPastVesting:15},{date:'2026-10-16',shares:12.5,matchedPastVesting:0},{date:'2029-11-30',shares:15,matchedPastVesting:0}]};
  assert.deepEqual(upcomingStockEvents(report,'2026-10-16').map(s=>[s.date,s.conditionalShares]),[['2026-10-16',12.5],['2029-11-30',15]]);
@@ -36,7 +36,7 @@ for(const lang of ['en','da'])test(`historical money cells render currency marku
  const format=n=>new Intl.NumberFormat(lang==='da'?'da-DK':'en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
  // Same markup-producing formatter contract as app.js, rather than a plain-text test double.
  const money=(n,c)=>n==null?'—':`<span class="money">${format(n)}<span class="money-currency"> ${e(c)}</span></span>`;
- const field={value:'',valueAsNumber:NaN,validity:{valid:true}},chart={innerHTML:''};
+ const field={value:'',valueAsNumber:NaN,validity:{valid:true}},chart={innerHTML:'',querySelectorAll:()=>[],querySelector:()=>({innerHTML:''})};
  const root={innerHTML:'',querySelector:id=>id==='#stock-live-quote'?null:id==='#stock-cutoff'?{...field,value:'2026-10-16'}:id==='#stock-chart'?chart:field,querySelectorAll:()=>[]};
  renderEmployeeStockReport(root,report,{S:{seq:1,mode:'Demo',owner:false,lang},e,money,date:x=>x,today:()=>'2026-10-16'});
  assert.ok(root.innerHTML.includes(`<td>${money(1234.5,'USD')}</td>`));
@@ -44,4 +44,19 @@ for(const lang of ['en','da'])test(`historical money cells render currency marku
  assert.ok((root.innerHTML.match(/<td>—<\/td>/g)||[]).length>=4); // Missing and nonnumeric money never becomes NaN or markup.
  assert.doesNotMatch(root.innerHTML,/&lt;span class=&quot;money|<img|onerror="|NaN|Infinity/);
  assert.ok(root.innerHTML.includes(e(payload))); // Text columns retain escaping, including sheet/type labels.
+});
+
+test('calendar timeline keeps empty months, inclusive dates, fractions and actual weekend delivery dates',()=>{
+ const report={schedules:[{date:'2026-11-30',shares:10.125,matchedPastVesting:0},{date:'2027-02-28',shares:8,matchedPastVesting:0},{date:'2026-09-01',shares:9,matchedPastVesting:0},{date:'2025-11-30',shares:12,matchedPastVesting:12}],transactions:[{type:'StockAwardVest',date:'2025-12-01',quantity:12}]};
+ const monthly=stockTimeline(report,'2026-11-30',{range:'12'});assert.equal(monthly.bins.length,12);assert.equal(monthly.bins[0].key,'2026-11');assert.equal(monthly.bins[0].conditional,10.125);assert.equal(monthly.bins[1].conditional,0);assert.equal(monthly.events.reduce((s,x)=>s+x.shares,0),18.125);
+ const yearly=stockTimeline(report,'2026-11-30',{range:'all',period:'year'});assert.deepEqual(yearly.bins.map(b=>[b.key,b.conditional]),[['2026',10.125],['2027',8]]);
+ const history=stockTimeline(report,'2026-11-30',{range:'all',history:true});assert.deepEqual(history.events.map(x=>[x.date,x.kind,x.shares]),[['2025-12-01','history',12],['2026-11-30','conditional',10.125],['2027-02-28','conditional',8]]);assert.equal(history.bins[0].key,'2025-12');assert.equal(report.schedules[2].matchedPastVesting,0);
+ assert.equal(stockTimeline(report,'2026-12-01',{range:'all',period:'year'}).events.reduce((s,x)=>s+x.shares,0),8);
+});
+
+test('held illustration is independent of 360 inclusion, with known zero distinct from missing assumptions',()=>{
+ const unmapped={currentHeldShares:12.5,includeInWealth:false};assert.deepEqual(stockHoldingIllustration(unmapped,200,6.25),{usd:2500,dkk:15625});
+ assert.deepEqual(stockHoldingIllustration({...unmapped,includeInWealth:true},200,6.25),{usd:2500,dkk:15625});
+ assert.deepEqual(stockHoldingIllustration(unmapped,NaN,NaN),{usd:null,dkk:null});assert.deepEqual(stockHoldingIllustration({...unmapped,currentHeldShares:null},200,6.25),{usd:null,dkk:null});
+ assert.deepEqual(stockHoldingIllustration({...unmapped,currentHeldShares:0},NaN,NaN),{usd:0,dkk:0});
 });
