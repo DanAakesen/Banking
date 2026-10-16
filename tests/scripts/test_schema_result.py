@@ -92,6 +92,47 @@ class SchemaResultTests(unittest.TestCase):
         with self.assertRaises(deploy.ReleaseError):
             deploy.validate_schema_result(json.dumps(self.result(invocation)).encode(), changed, 1006)
 
+    def test_only_fixed_schema_exit_codes_name_scope_stage_and_category(self):
+        invocation = self.invocation()
+        outcomes = [(1, "configuration", "configuration-invalid"), (2, "connection", "connection-unavailable"),
+                    (3, "query", "schema-missing"), (4, "query", "query-unavailable"),
+                    (5, "configuration", "deadline-cancelled"), (6, "connection", "deadline-cancelled"),
+                    (7, "query", "deadline-cancelled")]
+        for base, scope in ((100, "Demo"), (110, "Live")):
+            for suffix, stage, category in outcomes:
+                with self.subTest(scope=scope, suffix=suffix):
+                    raw = self.result(invocation); raw["exitCode"] = base + suffix
+                    result = deploy.validate_schema_result(json.dumps(raw).encode(), invocation, 1006, require_success=False)
+                    self.assertFalse(result["verified"])
+                    self.assertEqual((result["failedScope"], result["failedStage"], result["failureCategory"]), (scope, stage, category))
+                    self.assertEqual(result["scope"], ["Demo", "Live"])  # Requested scopes, not a claim both passed.
+                    with self.assertRaises(deploy.ReleaseError):
+                        deploy.validate_schema_result(json.dumps(raw).encode(), invocation, 1006)
+
+    def test_unknown_or_marker_exit_codes_cannot_name_a_schema_failure_or_pass(self):
+        for check, code in (("schema", 2), ("schema", 108), ("schema", 124), ("marker", 101), ("marker", 117)):
+            with self.subTest(check=check, code=code):
+                invocation = self.invocation(); invocation["check"] = check
+                raw = self.result(invocation); raw["exitCode"] = code
+                result = deploy.validate_schema_result(json.dumps(raw).encode(), invocation, 1006, require_success=False)
+                self.assertFalse(result["verified"])
+                for field in ("failedScope", "failedStage", "failureCategory"): self.assertNotIn(field, result)
+                with self.assertRaises(deploy.ReleaseError):
+                    deploy.validate_schema_result(json.dumps(raw).encode(), invocation, 1006)
+
+    def test_noninteger_exit_codes_and_forged_failure_fields_are_rejected_in_evidence_mode_too(self):
+        invocation = self.invocation()
+        for code in (True, False, 101.0, "101", None, -1, 256):
+            with self.subTest(code=code):
+                raw = self.result(invocation); raw["exitCode"] = code
+                with self.assertRaises(deploy.ReleaseError):
+                    deploy.validate_schema_result(json.dumps(raw).encode(), invocation, 1006, require_success=False)
+        for field in ("failedScope", "failedStage", "failureCategory"):
+            raw = self.result(invocation); raw[field] = "PRIVATE_EXCEPTION_TEXT"
+            with self.assertRaises(deploy.ReleaseError) as caught:
+                deploy.validate_schema_result(json.dumps(raw).encode(), invocation, 1006, require_success=False)
+            self.assertNotIn("PRIVATE_EXCEPTION_TEXT", str(caught.exception))
+
     def test_malformed_excessive_or_extra_private_content_is_never_echoed(self):
         invocation = self.invocation()
         extra = self.result(invocation)

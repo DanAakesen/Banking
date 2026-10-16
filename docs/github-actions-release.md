@@ -50,6 +50,26 @@ The artifact `banking-schema-diagnostic-<sha>` contains only bounded JSON invoca
 
 The separately invoked `CloudImport.Schema` operator command now inspects the pending migration IDs in **both** existing databases before any DDL. Each may have no pending migrations or exactly `20261015000000_PensionUploadHistory`; any other ID or list rejects the entire plan before either apply. Already-applied targets are skipped, and only the validated expected targets invoke EF's migrator with that explicit migration ID. Reading/decrypting the existing protected operator token is inside the `try/finally` that removes the handoff on success or failure, including decryption and metadata errors. This changes no grants, configuration or financial import behavior. Use a fresh immutable candidate containing this guard for the operator action; the earlier staged `cbfadca3` assembly does not contain it. Main's existing Luna controller must review/coordinate that candidate; this source change performs no Azure operation.
 
+## Fixed schema-gate outcomes — 16 October 2026
+
+Run `38886998020` at `29e370f9c8b1dd8308084f2007c83631f655a496` passed validation/package and the main-container marker, but the read-only schema CLI returned legacy exit 2 before ZIP submission or restart. Its terminal interval was about 48 seconds, consistent with the shared 45-second cancellation budget but not proof of a particular scope, stage or cause. Do not infer a missing migration or global database outage, retry blindly, or reapply schema from this generic result.
+
+The CLI retains the same metadata query, Managed Identity/TLS validation, one shared 45-second token across Demo and Live, and 15-second SQL command timeout. It now returns only these fixed outcomes. No DDL, financial rows, additional query, retry or permission is introduced.
+
+| Demo exit | Live exit | Failed stage | Fixed category |
+| --- | --- | --- | --- |
+| 101 | 111 | configuration | configuration-invalid |
+| 102 | 112 | connection | connection-unavailable |
+| 103 | 113 | query | schema-missing |
+| 104 | 114 | query | query-unavailable |
+| 105 | 115 | configuration | deadline-cancelled |
+| 106 | 116 | connection | deadline-cancelled |
+| 107 | 117 | query | deadline-cancelled |
+
+Only exit 0 verifies both scopes. `schema-missing` means the unchanged metadata query returned false; a query/provider exception is not evidence of missing tables. Cancellation is attributed to the scope/stage active when observed, including expiry before the next scope or a query returning after cancellation. Non-cancellation exceptions reveal no more than the fixed active stage/category.
+
+The existing private terminal protocol carries only the integer exit status with its unchanged source/ZIP/nonce/site/scope/expiry bindings. Remote stdout/stderr remain discarded. After strict validation, the release caller derives local `failedScope`, `failedStage`, `failureCategory` from the table only for a schema check. Marker checks, legacy code 2, shell timeout 124 and other unknown codes remain generic failures; no nonzero code authorizes publication. Boolean, floating-point, string or out-of-range exit statuses and forged extra result fields are rejected. `scope: [Demo, Live]` lists requested scopes, not a claim that both passed. No exception message, connection string, token, database name, row, header or provider output is copied into evidence. Actual diagnostic/release execution remains Main/Luna-owned and requires a fresh exact-source candidate after review.
+
 ## Setup and validation evidence — 15 October 2026
 
 Main independently verified the approved single-tenant connection: exactly one main-branch federation, one Website Contributor assignment at the website above, zero password/key credentials and zero API permissions. The five Azure repository variables are configured. The activation variable remains unset while the workflow is reviewed. This is coordinator-reported control-plane evidence; the development executor has not received an Azure credential.

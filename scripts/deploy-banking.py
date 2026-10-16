@@ -42,6 +42,20 @@ DEPLOY_TIMEOUT_SECONDS = 900
 HOSTED_READINESS_SECONDS = 600
 HOSTED_PROBE_SECONDS = 30
 SCHEMA_RESULT_TTL_SECONDS = 180
+# Fixed early CLI exit contract. No provider/SQL text is captured by the launcher.
+SCHEMA_GATE_FAILURES = {
+    base + suffix: (scope, stage, category)
+    for base, scope in ((100, "Demo"), (110, "Live"))
+    for suffix, stage, category in (
+        (1, "configuration", "configuration-invalid"),
+        (2, "connection", "connection-unavailable"),
+        (3, "query", "schema-missing"),
+        (4, "query", "query-unavailable"),
+        (5, "configuration", "deadline-cancelled"),
+        (6, "connection", "deadline-cancelled"),
+        (7, "query", "deadline-cancelled"),
+    )
+}
 CAPTURE_PHASES = frozenset({
     "capture-artifact", "capture-azure-context", "capture-baseline", "capture-token",
     "capture-scm-probe", "capture-backup", "capture-assets", "capture-evidence",
@@ -185,10 +199,14 @@ def validate_schema_result(raw: bytes, invocation: dict[str, Any], now: int,
             raise ValueError()
     except (ValueError, TypeError, KeyError, UnicodeDecodeError):
         raise ReleaseError("Schema result is invalid, stale, incomplete or unsuccessful.") from None
-    return {"verified": result["exitCode"] == 0, "completed": True,
-            "check": invocation["check"], "exitCode": result["exitCode"], "sourceSha": invocation["sourceSha"],
-            "archiveSha256": invocation["archiveSha256"], "invocationId": invocation["invocationId"],
-            "scope": ["Demo", "Live"], "finishedAt": result["finishedAt"]}
+    evidence = {"verified": result["exitCode"] == 0, "completed": True,
+                "check": invocation["check"], "exitCode": result["exitCode"], "sourceSha": invocation["sourceSha"],
+                "archiveSha256": invocation["archiveSha256"], "invocationId": invocation["invocationId"],
+                "scope": ["Demo", "Live"], "finishedAt": result["finishedAt"]}
+    failure = SCHEMA_GATE_FAILURES.get(result["exitCode"]) if invocation["check"] == "schema" else None
+    if failure is not None:
+        evidence.update(failedScope=failure[0], failedStage=failure[1], failureCategory=failure[2])
+    return evidence
 
 
 def wait_for_schema_result(invocation: dict[str, Any], read_metadata,
@@ -974,7 +992,9 @@ def run_main_container_check(token: str, source_sha: str, archive_sha256: str,
     )
     private_json(evidence_dir / f"{stem}-result.json", result)
     if not result["verified"]:
-        raise ReleaseError(f"Main-container {check} check completed unsuccessfully; see bounded terminal evidence.")
+        failure = SCHEMA_GATE_FAILURES.get(result["exitCode"]) if check == "schema" else None
+        detail = " (" + "/".join(failure) + ")" if failure is not None else ""
+        raise ReleaseError(f"Main-container {check} check completed unsuccessfully{detail}; see bounded terminal evidence.")
     return result
 
 
