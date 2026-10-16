@@ -1,0 +1,19 @@
+# Employee-stock history schema — proposed controlled release
+
+This is a separate dependency of retained employee-stock uploads. The stateless preview has no schema dependency. Do not activate retained endpoints/UI against missing tables. Main reviews source; its existing Luna medium controller alone stages the exact cloud-built candidate and coordinates the existing protected operator procedure. No runtime/deploy SQL grant, new resource, private source import or financial data population is part of this migration.
+
+## Exact additive target
+
+`20261016000000_EmployeeStockUploadHistory` creates EmployeeStockDocuments, EmployeeStockUploads and EmployeeStockSnapshots, plus nullable private WealthRecords.StockSourceKey and filtered unique mapping index. It adds no rows and changes no account, statement, pension, order or balance values. Originals and accepted snapshots are immutable; receipts retain independent versions/status and private stable source-identity hashes. Private original bytes, preview/accepted storage JSON and mapping/identity keys are excluded from normal serialization and explicitly retained inside existing encrypted recovery archives.
+
+## Operator and publication gate
+
+Use the existing staged assembly and existing encrypted short-lived operator handoff with `--Maintenance:Action=cloud-schema --Maintenance:SchemaTarget=20261016000000_EmployeeStockUploadHistory`. The target accepts only this exact stock migration or the existing exact pension migration; omitted target preserves the old pension-only behavior. Both Demo and Live pending lists must be inspected before any DDL. Each must be empty or contain exactly the selected target. Unknown/multiple/different pending IDs stop both before apply. The operator migrates explicitly to the selected target, never pending-all, and always removes the protected handoff even on validation/decryption/error. No token/configuration/row output is introduced.
+
+The existing main-container `--verify-pension-schema` compatibility gate now additionally requires all three stock tables, private mapping column and this exact migration-history entry, in both databases, within the existing shared 45-second metadata-only deadline and fixed exit contract. No business host or financial row read starts during the check. Missing/unavailable/unknown remains fail closed before ZIP publication. The candidate source/ZIP checksum, immutable artifact, private terminal marker, rollback and single-restart/readiness checks remain unchanged.
+
+Main must serialize review/migration/publication with activation held false while prerequisites are pending. A schema-ready candidate can be staged and the exact additive migration applied before successful preflight permits publication. Code rollback retains additive tables and all uploaded history; never run Down or delete/reseed data as code rollback. Private owner workbook compatibility still requires normal authenticated deployed preview after sign-in; source validation cannot claim that acceptance.
+
+## Source validation
+
+Cloud validation: 79 focused employee-stock/pension-gate/operator tests and all 97 Python release protocol tests pass. The preceding supported backend selection passed 245 tests before the separately reviewed preview correction; the final feature integration will rerun that supported selection. An exploratory broad `~Backup` name filter included two existing Windows/DPAPI host tests that cannot start in Linux; production startup rules were preserved and these are not part of the supported cloud filter. The isolated encrypted-stock recovery test passes, including original bytes, minimized identity and private product mapping. EF verifies the scaffold matches the current model and its idempotent SQL contains only the intended additive schema, not financial row mutations or privilege grants. None of this is an executed Azure migration or production data acceptance.

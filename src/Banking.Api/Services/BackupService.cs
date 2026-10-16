@@ -23,10 +23,28 @@ public sealed class BackupService(BankingDb db, Vault vault, Workspace workspace
                 info.Properties.Remove(info.Properties.First(p => p.Name == nameof(WealthRecord.PensionSourceKey)));
                 info.Properties.Add(property);
             }
+            if (info.Type == typeof(WealthRecord)) {
+                var property=info.CreateJsonPropertyInfo(typeof(string),nameof(WealthRecord.StockSourceKey));
+                property.Get=row=>((WealthRecord)row).StockSourceKey;
+                property.Set=(row,value)=>((WealthRecord)row).StockSourceKey=(string?)value;
+                info.Properties.Remove(info.Properties.First(p=>p.Name==nameof(WealthRecord.StockSourceKey)));info.Properties.Add(property);
+            }
+            // Recovery archives are encrypted. Normal API serialization still excludes these fields.
+            if (info.Type == typeof(EmployeeStockDocument) || info.Type == typeof(EmployeeStockUpload) || info.Type == typeof(EmployeeStockSnapshot)) {
+                var names=info.Type==typeof(EmployeeStockDocument)?new[]{nameof(EmployeeStockDocument.ProtectedOriginal),nameof(EmployeeStockDocument.Hash)}:
+                    info.Type==typeof(EmployeeStockUpload)?new[]{nameof(EmployeeStockUpload.PreviewJson),nameof(EmployeeStockUpload.SourceIdentityKey)}:
+                    new[]{nameof(EmployeeStockSnapshot.DataJson),nameof(EmployeeStockSnapshot.SourceIdentityKey)};
+                foreach(var name in names){
+                    var member=info.Type.GetProperty(name)!;var property=info.CreateJsonPropertyInfo(member.PropertyType,name);
+                    property.Get=member.GetValue;property.Set=member.SetValue;
+                    info.Properties.Remove(info.Properties.First(p=>p.Name==name));info.Properties.Add(property);
+                }
+            }
         } } } };
+    IDataProtector StockProtection => protection.CreateProtector("Banking.EmployeeStock.Original.v1", workspace.Mode, workspace.DemoScope);
     IDataProtector PensionProtection => protection.CreateProtector("Banking.Pension.Original.v1", workspace.Mode, workspace.DemoScope);
     private static readonly Type[] Types = [typeof(Connection), typeof(Account), typeof(Category), typeof(CategoryRule), typeof(Budget),
-        typeof(BankTransaction), typeof(BalanceSnapshot), typeof(ClassificationChange), typeof(TransferMatch), typeof(SyncJob), typeof(ImportItem), typeof(AccountAlias), typeof(Goal), typeof(ReviewAction), typeof(BudgetPlan), typeof(BudgetEntry), typeof(LoanRecord), typeof(WealthRecord), typeof(ResearchItem), typeof(PensionDocument), typeof(PensionUpload), typeof(PensionSnapshot)];
+        typeof(BankTransaction), typeof(BalanceSnapshot), typeof(ClassificationChange), typeof(TransferMatch), typeof(SyncJob), typeof(ImportItem), typeof(AccountAlias), typeof(Goal), typeof(ReviewAction), typeof(BudgetPlan), typeof(BudgetEntry), typeof(LoanRecord), typeof(WealthRecord), typeof(ResearchItem), typeof(PensionDocument), typeof(PensionUpload), typeof(PensionSnapshot),typeof(EmployeeStockDocument),typeof(EmployeeStockUpload),typeof(EmployeeStockSnapshot)];
     public async Task Export(string file, CancellationToken ct, string? passphrase = null)
     {
         if (File.Exists(file)) throw new ApiFailure(409, "BACKUP_ALREADY_EXISTS");
@@ -47,6 +65,7 @@ public sealed class BackupService(BankingDb db, Vault vault, Workspace workspace
                         if (record is Account account) { account.ProviderAccountId = ""; account.Accessible = false; }
                         // Outer portable archive encrypts these bytes; re-protect with destination keys on restore.
                         if (record is PensionDocument document) document.ProtectedOriginal = PensionProtection.Unprotect(document.ProtectedOriginal);
+                        if (record is EmployeeStockDocument stock) stock.ProtectedOriginal = StockProtection.Unprotect(stock.ProtectedOriginal);
                         if (record is SyncJob job)
                         {
                             job.Cursor = null;
@@ -88,6 +107,9 @@ public sealed class BackupService(BankingDb db, Vault vault, Workspace workspace
         archive.Tables.TryAdd(nameof(PensionDocument), JsonSerializer.SerializeToElement(Array.Empty<PensionDocument>(), Json));
         archive.Tables.TryAdd(nameof(PensionUpload), JsonSerializer.SerializeToElement(Array.Empty<PensionUpload>(), Json));
         archive.Tables.TryAdd(nameof(PensionSnapshot), JsonSerializer.SerializeToElement(Array.Empty<PensionSnapshot>(), Json));
+        archive.Tables.TryAdd(nameof(EmployeeStockDocument), JsonSerializer.SerializeToElement(Array.Empty<EmployeeStockDocument>(), Json));
+        archive.Tables.TryAdd(nameof(EmployeeStockUpload), JsonSerializer.SerializeToElement(Array.Empty<EmployeeStockUpload>(), Json));
+        archive.Tables.TryAdd(nameof(EmployeeStockSnapshot), JsonSerializer.SerializeToElement(Array.Empty<EmployeeStockSnapshot>(), Json));
         Check.That(archive.Tables.Count == Types.Length, "UNSUPPORTED_ARCHIVE");
         Check.That(archive.Mode == workspace.Mode && archive.Portable == (passphrase is not null), "ARCHIVE_MODE_MISMATCH");
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
@@ -104,6 +126,7 @@ public sealed class BackupService(BankingDb db, Vault vault, Workspace workspace
             {
                 record.Version = [];
                 if (passphrase is not null && record is PensionDocument document) document.ProtectedOriginal = PensionProtection.Protect(document.ProtectedOriginal);
+                if (passphrase is not null && record is EmployeeStockDocument stock) stock.ProtectedOriginal = StockProtection.Protect(stock.ProtectedOriginal);
                 if (record is SyncJob { Status: "Running" } job) job.Status = "Queued";
                 db.Add(record);
             }

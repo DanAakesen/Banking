@@ -23,6 +23,7 @@ public static class CloudImport
     public static async Task Schema(IServiceProvider services, IConfiguration config)
     {
         const string tokenFile = "/home/Banking/deployment/operator.protected";
+        var target = config["Maintenance:SchemaTarget"] ?? PensionSchemaGate.Migration;
         await Schema(services, tokenFile,
             async (token, mode) => {
                 await using var db = SchemaDatabase(config, mode, token);
@@ -30,26 +31,29 @@ public static class CloudImport
             },
             async (token, mode) => {
                 await using var db = SchemaDatabase(config, mode, token);
-                await db.GetService<IMigrator>().MigrateAsync(PensionSchemaGate.Migration);
-            });
+                await db.GetService<IMigrator>().MigrateAsync(target);
+            }, target);
     }
 
     // Test seams stay internal; production targets, credentials and allowed migration are fixed above.
     internal static async Task Schema(IServiceProvider services, string tokenFile,
-        Func<string, string, Task<string[]>> pendingMigrations, Func<string, string, Task> applyMigration)
+        Func<string, string, Task<string[]>> pendingMigrations, Func<string, string, Task> applyMigration,
+        string target = PensionSchemaGate.Migration)
     {
         try {
+            if (target is not (PensionSchemaGate.Migration or PensionSchemaGate.StockMigration))
+                throw new InvalidOperationException("Unsupported schema target; neither database was changed.");
             var protector=services.GetRequiredService<IDataProtectionProvider>().CreateProtector("Banking.Cloud.Migration.v1");
             var token=protector.Unprotect(await File.ReadAllTextAsync(tokenFile));
             var plan = new List<(string Mode, string[] Pending)>();
             foreach (var mode in new[] { "Demo", "Live" })
                 plan.Add((mode, await pendingMigrations(token, mode)));
-            if (plan.Any(target => target.Pending.Length != 0 &&
-                (target.Pending.Length != 1 || target.Pending[0] != PensionSchemaGate.Migration)))
+            if (plan.Any(item => item.Pending.Length != 0 &&
+                (item.Pending.Length != 1 || item.Pending[0] != target)))
                 throw new InvalidOperationException("Unexpected pending schema migration; neither database was changed.");
-            foreach (var target in plan) {
-                if (target.Pending.Length == 1) await applyMigration(token, target.Mode);
-                Console.WriteLine(target.Mode+": applied "+target.Pending.Length+" schema migrations; existing records preserved.");
+            foreach (var item in plan) {
+                if (item.Pending.Length == 1) await applyMigration(token, item.Mode);
+                Console.WriteLine(item.Mode+": applied "+item.Pending.Length+" schema migrations; existing records preserved.");
             }
         } finally {File.Delete(tokenFile);}
     }

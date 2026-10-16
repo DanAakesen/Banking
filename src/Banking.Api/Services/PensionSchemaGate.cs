@@ -7,6 +7,7 @@ namespace Banking.Api.Services;
 public static class PensionSchemaGate
 {
     public const string Migration = "20261015000000_PensionUploadHistory";
+    public const string StockMigration = "20261016000000_EmployeeStockUploadHistory";
     public static async Task<int> Run(IConfiguration config)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
@@ -28,8 +29,14 @@ public static class PensionSchemaGate
             command.CommandText = "SELECT CASE WHEN OBJECT_ID(N'dbo.PensionDocuments',N'U') IS NOT NULL "
                 + "AND OBJECT_ID(N'dbo.PensionUploads',N'U') IS NOT NULL AND OBJECT_ID(N'dbo.PensionSnapshots',N'U') IS NOT NULL "
                 + "AND COL_LENGTH(N'dbo.WealthRecords',N'PensionSourceKey') IS NOT NULL "
-                + "AND EXISTS(SELECT 1 FROM dbo.__EFMigrationsHistory WHERE MigrationId=@migration) THEN 1 ELSE 0 END";
+                + "AND EXISTS(SELECT 1 FROM dbo.__EFMigrationsHistory WHERE MigrationId=@migration) "
+                + "AND OBJECT_ID(N'dbo.EmployeeStockDocuments',N'U') IS NOT NULL "
+                + "AND OBJECT_ID(N'dbo.EmployeeStockUploads',N'U') IS NOT NULL "
+                + "AND OBJECT_ID(N'dbo.EmployeeStockSnapshots',N'U') IS NOT NULL "
+                + "AND COL_LENGTH(N'dbo.WealthRecords',N'StockSourceKey') IS NOT NULL "
+                + "AND EXISTS(SELECT 1 FROM dbo.__EFMigrationsHistory WHERE MigrationId=@stockMigration) THEN 1 ELSE 0 END";
             command.Parameters.AddWithValue("@migration", Migration);
+            command.Parameters.AddWithValue("@stockMigration", StockMigration);
             return Convert.ToInt32(await command.ExecuteScalarAsync(ct)) == 1;
         }
         public ValueTask DisposeAsync() => sql.DisposeAsync();
