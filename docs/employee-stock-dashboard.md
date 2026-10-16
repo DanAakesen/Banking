@@ -2,20 +2,24 @@
 
 ## Current delivery status — 16 October 2026
 
-Main verified release `38948037018`, hosted `git-105894a154266b119e1e832522d58e1ed2475d9e`, exact assets/CSP and the existing private owner's retained workflow. The three independent fictional Demo reports were then approved through normal Demo APIs. Repeat dry-run returned no operations and repeat apply made zero writes. Real Azure browser checks passed at 1440px EN/light and 390px DA/dark, including three byte-identical downloadable originals and independent native-XLSX validation. No private source contents, holdings declarations or identifiers belong in public documentation.
+Main reports the loading-state release at `36ef52c7eef6c28b273cbee3dbb5b25a72735178` complete. Real Saxo LIVE MSFT/USDDKK, DKK/USD arithmetic, one mapped owned value, excluded conditional compensation and retained history were verified on the preceding `de4c326` build through normal isolated Demo sessions and Main's private owner browser. The three fictional Demo originals/history points were already applied and repeat setup was a no-op. Private sources, declarations and identifiers remain outside public documentation.
 
-The **money-first cumulative-line correction is source-only pending Main review and Luna's serialized release**. It needs no migration, data application, re-upload or reseed. Existing approved snapshots, originals, product mappings, pension and Saxo data stay unchanged. Actual hosted Saxo MSFT **and FxSpot USD/DKK** acceptance for the new projection remains pending publication; synthetic provider fixtures do not establish live availability or entitlements.
+The **period/range/tooltip and Reports-dialog refinement below is source-only pending Main review and Luna's serialized release**. It changes presentation only: no migration, provider/API change, re-upload, data application or reseed.
 
 ## Product view
 
-Only the Microsoft employee-share section changes. Three compact money figures show declared held value, source-unvested indicative value and the next scheduled vesting amount/date. DKK is the default; USD is one tap away. Shares are secondary point/table details. Upload/review, source warnings, historical grants/deliveries, saved illustration inputs, employment/archive and originals remain behind existing actions/details.
+Three compact figures show held value, conditional source-unvested value and the next vesting amount/date. DKK is the default; USD is one tap away. The main view contains these metrics, a cumulative stepped line, period/range controls and one compact current-price/before-tax label. Shares are secondary in the point tooltip. An actually empty manual-investment list becomes a compact **Add investment** action; populated records remain available.
 
-The main chart is a cumulative stepped line from today's inclusive cutoff through the final remaining source vesting date. Equal dates aggregate; fractional quantities and weekend source dates remain intact. Flat segments between events are not interpolated deliveries. A selected point shows its exact date, gross money vesting then and cumulative gross money. Keyboard arrows/Home/End, pointer inspection and touch select actual source points; container resizing preserves selection/focus and never fetches data. There are no month/year bins or quantity fallback in the primary graph.
+**6M / 1Y / 2Y / All / Custom** use calendar dates, with month-end clamping. Custom from/to dates and two draggable/keyboard range handles select an inclusive window. The prominent **vesting in this period** amount sums only actual unmatched source events within that window. The separately labelled cumulative amount retains all conditional source vesting from the active cutoff (today for an active report) through the window end; narrowing the window does not reset it. No invented period-end events, clock-based deliveries or returns. Empty windows show zero scheduled events; missing prices/conversion stay unknown for nonzero quantities.
 
-- [Rendered desktop](design-targets/employee-stock-money-line-desktop.png)
-- [Rendered 390px Danish/dark](design-targets/employee-stock-money-line-mobile.png)
+The anchored point popover shows the exact source date, incremental money and cumulative money in the chosen currency, formatted to two decimals. Hover, tap and keyboard arrows/Home/End share the same actual points; Escape closes the popover. It stays within the viewport, repositions with scrolling/resizing, and hides if its anchor leaves the viewport. Period/currency/range/point changes are local and preserve the automatic quote. Pending requests show loading; completed failures stay unavailable and retained valid quote timestamps are not refreshed by a pending request.
 
-These images use real C#-generated independent synthetic reports and explicitly synthetic market/FX response fixtures, not an actual provider observation.
+One **Reports** action opens a native modal with Reports, Selected report and Source details tabs. Upload/review/approval, original download, dated history, source/grant/delivery tables, manual view-only illustration and audit details live there. Closing respects unsaved review and in-flight save guards; ordinary view-range changes never make an approved report dirty. Source date/money tables retain unknown markers, real currency formatting and text escaping. Technical metadata is collapsed. The primary dashboard has no source tables, manual price fields or nested accordions.
+
+- [Rendered desktop](design-targets/employee-stock-range-desktop.png)
+- [Rendered 390px Danish/dark](design-targets/employee-stock-range-mobile.png)
+
+These images use actual components with independent C#-generated synthetic reports and synthetic market/FX fixtures, not private sources or live-provider evidence.
 
 ## Current market data and immutable reports
 
@@ -39,8 +43,8 @@ Existing `setup-demo-employee-stocks.py` stays an explicit fixed-origin, exact-b
 
 ## Validation
 
-Banking Cloud supported release selection: 311 backend tests; 219 frontend/advisor Node tests; 21 frontend-host tests; 104 Python protocol tests. C# tests exercise real synthetic imports/approvals, current-price unit/orientation calculations, no-write history/product preservation, zero/unknown, read-only provider paths, exact FX resolution/quality, partial failures, cache/token/access and concurrency boundaries. The supported selection continues excluding unrelated Windows-DPAPI host baselines.
+Cloud validation for this frontend increment: 94 focused EmployeeStock backend cases and 221 frontend/advisor Node cases passed. Unit checks cover inclusive calendar boundaries, fractional money, zero-event windows, unknown FX and cumulative value before a selected window. Existing retained-service tests cover approval/history/duplicate/correction/isolation without production writes.
 
-Browser evidence covers 1440/1024/390 × EN/DA × light/Graphite for retained import/history and the money-line dashboard (24 cases), real C# DTOs, unknown FX with usable USD, denied/stale/closed market states, exact cumulative values, keyboard/touch/resizing, no per-control requests, saved report selection/reload, CSP/overflow and preserved review/security behavior. These are cloud fixtures; Main checks live provider prices/rates and the unchanged existing owner and Demo records after the reviewed release.
+The browser matrix exercises the actual component at 1440/1024/390 × EN/DA × light/Graphite: period and custom-range money reconciliation, native drag/keyboard range handles, bounded hover/focus/tap popovers, currency retention, zero extra requests for chart controls, loading/denied/stale/unknown states, report navigation, retained review/concurrency/duplicate/correction/original download, no dirty view controls, modal keyboard/close behavior, CSP/overflow and disposal. These cloud fixtures are separate from Main's later deployed/private-owner acceptance. No original or owner financial record is changed by this increment.
 
 References: [Saxo instrument reference](https://www.developer.saxo/openapi/referencedocs/ref/v1/instruments/get__ref), [InfoPrices](https://www.developer.saxo/openapi/referencedocs/trade/v1/infoprices/get__trade), [Quote schema](https://www.developer.saxo/openapi/referencedocs/trade/v1/infoprices/get__trade/schema-quote), [pricing](https://www.developer.saxo/openapi/learn/pricing).

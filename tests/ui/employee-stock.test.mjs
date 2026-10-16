@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {upcomingStockEvents,stockIllustration,employeeStockQuote,stockTimeline,stockHoldingIllustration,renderEmployeeStockReport} from '../../src/Banking.Api/wwwroot/employee-stock-ui.js';
+import {upcomingStockEvents,stockIllustration,employeeStockQuote,stockTimeline,stockHoldingIllustration,renderEmployeeStockReport,stockVestingLine,stockVestingRange} from '../../src/Banking.Api/wwwroot/employee-stock-ui.js';
 test('upcoming uses explicit inclusive cutoff, matching source delivery and conditional quantity, never current holdings',()=>{
  const report={schedules:[{date:'2025-11-30',shares:15,matchedPastVesting:15},{date:'2026-10-16',shares:12.5,matchedPastVesting:0},{date:'2029-11-30',shares:15,matchedPastVesting:0}]};
  assert.deepEqual(upcomingStockEvents(report,'2026-10-16').map(s=>[s.date,s.conditionalShares]),[['2026-10-16',12.5],['2029-11-30',15]]);
@@ -11,6 +11,19 @@ test('illustrative price and explicit DKK per USD are separate, missing inputs r
  assert.deepEqual(stockIllustration(12.5,200,NaN),{usd:2500,dkk:null});
  for(const price of [null,undefined,0,-1,NaN])assert.deepEqual(stockIllustration(12.5,price,6.25),{usd:null,dkk:null});
  assert.deepEqual(stockIllustration(0,200,6.25),{usd:0,dkk:0});
+});
+test('inclusive custom windows sum only their events and preserve cumulative value before the window',()=>{
+ const report={schedules:[{date:'2026-11-30',shares:10,matchedPastVesting:0},{date:'2027-02-28',shares:2.125,matchedPastVesting:0},{date:'2027-02-28',shares:.375,matchedPastVesting:0},{date:'2027-03-01',shares:5,matchedPastVesting:0}]},before=JSON.stringify(report);
+ const points=stockVestingLine(report,'2026-10-16',123.45,6.789),r=stockVestingRange(points,'2026-10-16','custom','2027-02-28','2027-02-28');
+ assert.equal(r.points.length,1);assert.equal(r.shares,2.5);assert.ok(Math.abs(r.value-2.5*123.45*6.789)<1e-9);assert.ok(Math.abs(r.baseline-10*123.45*6.789)<1e-9);assert.ok(Math.abs(r.cumulative-12.5*123.45*6.789)<1e-9);assert.equal(JSON.stringify(report),before);
+ const empty=stockVestingRange(points,'2026-10-16','custom','2026-12-01','2026-12-02');assert.equal(empty.value,0);assert.equal(empty.shares,0);assert.equal(empty.cumulative,points[0].cumulative);
+ const usd=stockVestingRange(stockVestingLine(report,'2026-10-16',123.45,null,'USD'),'2026-10-16','custom','2027-02-28','2027-02-28');assert.equal(usd.value,2.5*123.45);
+ const unknown=stockVestingRange(stockVestingLine(report,'2026-10-16',123.45,null),'2026-10-16','custom','2027-02-28','2027-02-28');assert.equal(unknown.value,null);assert.equal(unknown.baseline,null);assert.equal(unknown.cumulative,null);
+});
+test('calendar presets clamp month ends, keep inclusive boundaries, and reject invalid or past custom windows',()=>{
+ const points=[{date:'2025-02-28',shares:1,value:10,cumulative:10},{date:'2025-03-01',shares:2,value:20,cumulative:30},{date:'2025-08-31',shares:3,value:30,cumulative:60},{date:'2026-08-31',shares:4,value:40,cumulative:100}];
+ assert.equal(stockVestingRange(points,'2024-08-31','6m').to,'2025-02-28');assert.equal(stockVestingRange(points,'2024-08-31','6m').value,10);assert.equal(stockVestingRange(points,'2024-08-31','1y').value,60);assert.equal(stockVestingRange(points,'2024-08-31','2y').value,100);assert.equal(stockVestingRange(points,'2024-08-31','all').to,'2026-08-31');
+ for(const [from,to] of [['2024-08-30','2025-01-01'],['2025-02-30','2025-03-01'],['2025-03-01','2025-02-28'],['','2025-01-01']])assert.equal(stockVestingRange(points,'2024-08-31','custom',from,to),null);
 });
 
 test('invalid bounded assumptions and overflowing products stay unknown',()=>{
