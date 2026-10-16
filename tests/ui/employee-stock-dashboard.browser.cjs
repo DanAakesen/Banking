@@ -7,7 +7,8 @@ const csp="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'sel
  const variants=['earlier','middle','later'],receipts=await Promise.all(variants.map(async v=>JSON.parse(await fs.readFile(path.join(out,v+'-approved.json'))))),history=JSON.parse(await fs.readFile(path.join(out,'history.json'))),valuationCases=await Promise.all(['unmapped-known','unmapped-unknown','unmapped-zero'].map(async v=>JSON.parse(await fs.readFile(path.join(out,v+'.json'))))),originals=await Promise.all(variants.map(v=>fs.readFile(path.join(out,v+'.xlsx'))));
  const browser=await chromium.launch({headless:true,executablePath:'/usr/bin/chromium',args:['--no-sandbox']});let passed=0;
  try{for(const width of process.env.STOCK_DASHBOARD_QUICK?[1440]:[1440,1024,390])for(const theme of process.env.STOCK_DASHBOARD_QUICK?['light']:['light','graphite'])for(const lang of process.env.STOCK_DASHBOARD_QUICK?['en']:['en','da']){
-  const context=await browser.newContext({viewport:{width,height:1000},hasTouch:width===390,reducedMotion:'reduce'}),page=await context.newPage(),calls=[],errors=[];let override=null,marketCase="available";
+  const context=await browser.newContext({viewport:{width,height:1000},hasTouch:width===390,reducedMotion:'reduce'}),page=await context.newPage(),calls=[],errors=[];let override=null,marketCase="available",releaseMarket;
+  let marketGate=new Promise(resolve=>releaseMarket=resolve);
   await page.addInitScript(trackResize);await page.clock.setFixedTime(new Date('2026-10-16T12:00:00Z'));page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(({theme,lang})=>{localStorage.setItem('banking.preferences.v1',JSON.stringify({theme,lang,aiGlass:false}));sessionStorage.setItem('banking.workspace','Demo');document.addEventListener('securitypolicyviolation',e=>(window.__csp||=[]).push(e.violatedDirective));},{theme,lang});
   await page.route('**/*',async route=>{const req=route.request(),url=new URL(req.url());if(url.origin!==origin)return route.abort();
@@ -19,6 +20,7 @@ const csp="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'sel
     else if(/^employee-stocks\/demo\/uploads\/[^/]+(?:\/original)?$/.test(p)){const all=[...receipts,...valuationCases],i=all.findIndex(r=>r.id===p.split('/')[3]);assert.ok(i>=0,'Only the selected synthetic receipt is read');if(p.endsWith('/original'))return route.fulfill({headers:{'X-Banking-Mode':'Demo','Cache-Control':'no-store, private','Content-Disposition':'attachment; filename="Fiktive-medarbejderaktier.xlsx"'},contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',body:originals[i]});body=all[i];}
     else if(p==='investments/saxo/portfolio'){status=503;body={error:'SAXO_SIGN_IN_REQUIRED'};}
     else throw Error('Unexpected Demo endpoint '+p);
+    if(p==='markets/employee-shares'){await marketGate;if(marketCase==='error'){status=503;body={error:'SAXO_MARKET_UNAVAILABLE'};}}
     return route.fulfill({status,contentType:'application/json',headers:{'X-Banking-Mode':'Demo','Cache-Control':'no-store, private'},body:JSON.stringify(body)});
    }
    if(url.pathname.startsWith('/advisor/'))return route.fulfill({contentType:'application/json',body:'{}'});
@@ -27,6 +29,10 @@ const csp="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'sel
   });
   await page.goto(origin+'/#/investments');await page.waitForSelector('#stock-chart svg');await page.waitForFunction(()=>!document.querySelector('#main').hasAttribute('aria-busy'));
   const section=page.locator('#employee-stock-preview');await section.evaluate(el=>el.scrollIntoView({block:'start'}));
+  // Hold the first real component request: pending is not a completed market failure.
+  assert.match(await page.locator('#stock-market-status').innerText(),lang==='en'?/Loading current price/:/Henter aktuel kurs/);
+  assert.match(await page.locator('.stock-money-unavailable').innerText(),lang==='en'?/Loading current price/:/Henter aktuel kurs/);
+  assert.doesNotMatch(await section.innerText(),/unavailable|utilgængelig/);releaseMarket();
   await page.waitForFunction(()=>document.querySelector('#stock-unvested-value')?.textContent.includes('471'));
   assert.match(await page.locator('#stock-unvested-value').innerText(),/471[,. ]?960/);assert.match(await page.locator('#stock-held-value').innerText(),/131[,. ]?962/);
   if(width===390){const sizes=await page.locator('.stock-facts > div').evaluateAll(xs=>xs.map(x=>({y:x.getBoundingClientRect().y,w:x.clientWidth,scroll:x.scrollWidth,font:parseFloat(getComputedStyle(x.querySelector('strong > .money')).fontSize)})));assert.ok(sizes[1].y<sizes[0].y);assert.ok(Math.abs(sizes[0].y-sizes[2].y)<2);assert.ok(sizes[1].font>sizes[0].font*1.4);assert.ok(sizes.every(x=>x.scroll<=x.w+1));}
@@ -54,7 +60,16 @@ const csp="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'sel
    marketCase='unknown-time';await page.reload();await page.waitForFunction(()=>document.querySelector('#stock-market-status')?.textContent.includes('source time unknown'));assert.match(await page.locator('.stock-chart-total').innerText(),/471[,. ]?960/);
    marketCase='closed';await page.reload();await page.waitForFunction(()=>document.querySelector('#stock-market-status')?.textContent.includes('market closed'));assert.match(await page.locator('.stock-chart-total').innerText(),/471[,. ]?960/);
    marketCase='stale';await page.reload();await page.waitForFunction(()=>document.querySelector('#stock-market-status')?.textContent.includes('last known'));assert.match(await page.locator('.stock-chart-total').innerText(),/471[,. ]?960/);
-   marketCase='denied';await page.reload();await page.waitForFunction(()=>document.querySelector('#stock-market-status')?.textContent.includes('MSFT price unavailable'));assert.equal(await page.locator('.stock-step-line').count(),0);assert.equal((await page.locator('#stock-held-value').innerText()).trim(),'—');
+   for(const failure of ['denied','error']){marketCase=failure;await page.reload();await page.waitForFunction(()=>document.querySelector('#stock-market-status')?.textContent.includes('MSFT price unavailable'));assert.equal(await page.locator('.stock-step-line').count(),0);assert.equal((await page.locator('#stock-held-value').innerText()).trim(),'—');assert.match(await page.locator('.stock-money-unavailable').innerText(),/Current price unavailable/);}
+   // Retry with no result shows loading; a later refresh keeps valid values and original timestamps.
+   for(const [time,hasPrior] of [['12:01:01',false],['12:02:02',true]]){
+    marketCase='available';marketGate=new Promise(resolve=>releaseMarket=resolve);
+    const prior=await page.locator('#stock-market-status').innerText(),priorTime=await page.locator('#stock-market-status').getAttribute('title'),started=page.waitForRequest(r=>new URL(r.url()).pathname==='/api/markets/employee-shares'),completed=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/markets/employee-shares');
+    await page.clock.setFixedTime(new Date('2026-10-16T'+time+'Z'));await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await started;
+    if(hasPrior){assert.equal(await page.locator('#stock-market-status').innerText(),prior);assert.equal(await page.locator('#stock-market-status').getAttribute('title'),priorTime);assert.match(await page.locator('.stock-chart-total').innerText(),/471[,. ]?960/);}
+    else {assert.match(await page.locator('#stock-market-status').innerText(),/Loading current price/);assert.match(await page.locator('.stock-money-unavailable').innerText(),/Loading current price/);}
+    releaseMarket();await (await completed).finished();await page.waitForFunction(()=>document.querySelector('#stock-market-status')?.textContent.includes('MSFT 450'));
+   }
   }
   assert.deepEqual(errors,[]);assert.deepEqual(await page.evaluate(()=>window.__csp||[]),[]);await context.close();passed++;
 

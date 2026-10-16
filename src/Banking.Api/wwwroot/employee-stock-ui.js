@@ -103,11 +103,14 @@ export function renderEmployeeStockReport(out,report,{S,e,money,date,today,api},
  for(const [id,value] of Object.entries({'stock-price':initial.priceUsd,'stock-rate':initial.dkkPerUsd,'stock-observed':initial.priceAsOf,'stock-price-source':initial.priceSource,'stock-fx-observed':initial.fxAsOf,'stock-fx-source':initial.fxSource}))if(value!=null)out.querySelector('#'+id).value=value;
  let currency='DKK',selectedDate=null,disposed=false,lastWidth=0,resizeFrame=0,timer=null,loading=false,manual=false;
  let market={price:null,rate:null,quote:null,fx:null};
+ let marketPending=Boolean(api&&!initial.historicalCutoff);
+ const waitingForMarket=()=>!manual&&marketPending&&!market.quote&&!market.fx;
  const current=()=>!disposed&&out.isConnected&&S.seq===seq&&S.mode===mode;
  const field=id=>out.querySelector('#stock-'+id);
  const timestamp=value=>new Intl.DateTimeFormat(locale,{year:'numeric',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'Europe/Copenhagen',timeZoneName:'short'}).format(new Date(value));
  function status(){
   if(manual){field('market-status').title='';field('market-status').textContent=L('Saved / edited illustration · not a live quote','Gemt / redigeret illustration · ikke en aktuel kurs');return;}
+  if(waitingForMarket()){field('market-status').title='';field('market-status').textContent=L('Loading current price and USD/DKK…','Henter aktuel kurs og USD/DKK…');return;}
   const q=market.quote,f=market.fx,delay=n=>n==null?L('delay unknown','ukendt forsinkelse'):n>0?n+' '+L('min delayed','min forsinket'):'';
   field('market-status').title=[q&&'Saxo LIVE · MSFT '+timestamp(q.observedAt)+' · '+L('retrieved','hentet')+' '+timestamp(q.retrievedAt)+' · '+(q.delayMinutes??L('unknown','ukendt'))+' min',f&&'Saxo LIVE · USD/DKK '+(f.observedAt?timestamp(f.observedAt):L('source time unknown','kildetid ukendt'))+' · '+L('retrieved','hentet')+' '+timestamp(f.retrievedAt)+' · '+(f.delayMinutes??L('unknown','ukendt'))+' min',initial.reportAsOf&&L('Report','Rapport')+' '+date(initial.reportAsOf)].filter(Boolean).join(' / ');
   const stockText=q?'MSFT '+number(q.price)+' USD'+(delay(q.delayMinutes)?' · '+delay(q.delayMinutes):''):L('MSFT price unavailable','MSFT-kurs utilgængelig');
@@ -136,7 +139,7 @@ export function renderEmployeeStockReport(out,report,{S,e,money,date,today,api},
   let line='M '+left+' '+y(0);for(const p of points)line+=' H '+x(p.date)+' V '+y(p.cumulative??0);
   const endX=points.length?x(points.at(-1).date):W-right,area=line+' L '+endX+' '+y(0)+' Z';
   const ticks=[...new Set([cutoff.value,...Array.from({length:W<500?3:5},(_,i)=>new Date(start+(end-start)*(i+1)/(W<500?3:5)).toISOString().slice(0,10))])];
-  chart.innerHTML=`<div class="stock-chart-total"><strong>${money(known?(points.at(-1)?.cumulative??0):null,currency)}</strong><span>${L('scheduled by','planlagt frem til')} ${date(points.at(-1)?.date)}</span></div>${!known?`<div class="stock-money-unavailable" role="status">${currency==='DKK'&&market.price!=null?L('DKK conversion unavailable. View USD.','DKK-omregning utilgængelig. Se USD.'):L('Current price unavailable. Source dates are retained.','Aktuel kurs utilgængelig. Kildedatoerne er bevaret.')}</div>`:''}
+  chart.innerHTML=`<div class="stock-chart-total"><strong>${money(known?(points.at(-1)?.cumulative??0):null,currency)}</strong><span>${L('scheduled by','planlagt frem til')} ${date(points.at(-1)?.date)}</span></div>${!known?`<div class="stock-money-unavailable" role="status">${waitingForMarket()?L('Loading current price and USD/DKK…','Henter aktuel kurs og USD/DKK…'):currency==='DKK'&&market.price!=null?L('DKK conversion unavailable. View USD.','DKK-omregning utilgængelig. Se USD.'):L('Current price unavailable. Source dates are retained.','Aktuel kurs utilgængelig. Kildedatoerne er bevaret.')}</div>`:''}
   <svg class="stock-timeline stock-money-line" viewBox="0 0 ${W} ${H}" role="group" aria-label="${L('Cumulative conditional vesting value','Samlet betinget modningsværdi')} · ${currency}">${known?[0,.5,1].map(r=>`<line class="stock-grid" x1="${left}" x2="${W-right}" y1="${y(max*r)}" y2="${y(max*r)}"/><text class="stock-axis" x="${left-8}" y="${y(max*r)+4}" text-anchor="end">${e(new Intl.NumberFormat(locale,{notation:'compact',maximumFractionDigits:1}).format(max*r))}</text>`).join('')+`<path class="stock-line-area" d="${area}"/><path class="stock-step-line" d="${line}"/>`:''}${ticks.map(day=>`<text class="stock-axis" x="${x(day)}" y="${H-10}" text-anchor="${day===cutoff.value?'start':day===ticks.at(-1)?'end':'middle'}">${e(new Intl.DateTimeFormat(locale,{month:'short',year:'2-digit',timeZone:'UTC'}).format(new Date(day+'T00:00:00Z')))}</text>`).join('')}${points.map((p,i)=>`<g data-stock-point="${e(p.date)}" class="stock-line-point" role="button" tabindex="${i===0?0:-1}" aria-pressed="false" aria-label="${e(date(p.date)+' · '+(p.value==null?L('Value unknown','Værdi ukendt'):number(p.value)+' '+currency)+' · '+L('cumulative','samlet')+' '+number(p.cumulative)+' '+currency)}"><circle class="stock-point-hit" cx="${x(p.date)}" cy="${known?y(p.cumulative):y(0)}" r="13"/><circle class="stock-point-dot" cx="${x(p.date)}" cy="${known?y(p.cumulative):y(0)}" r="4"/></g>`).join('')}</svg>
   <div id="stock-point" class="stock-point" role="status" aria-live="polite"></div><details class="stock-schedule-table"><summary>${L('Vesting dates & shares','Modningsdatoer og aktier')}</summary>${table([L('Date','Dato'),L('This date','Denne dato')+' · '+currency,L('Cumulative','Samlet')+' · '+currency,L('Shares','Aktier')],points.map(p=>[date(p.date),number(p.value),number(p.cumulative),number(p.shares)]))}</details>`;
   const buttons=[...chart.querySelectorAll('[data-stock-point]')];
@@ -152,10 +155,10 @@ export function renderEmployeeStockReport(out,report,{S,e,money,date,today,api},
   if(tableOpen)chart.querySelector('.stock-schedule-table').open=true;if(focused)buttons.find(b=>b.dataset.stockPoint===focused)?.focus({preventScroll:true});else if(tableFocus)chart.querySelector(tableFocus)?.focus();
  }
  async function refresh(){
-  clearTimeout(timer);if(!current()||loading)return;if(document.hidden){timer=setTimeout(refresh,60000);return;}loading=true;
-  try{market=employeeStockMarket(await readEmployeeStockMarket(api,mode,Date.now(),seq));if(!current())return;draw();}
-  catch(err){if(current()&&err.name!=='AbortError'){market={price:null,rate:null,quote:null,fx:null};draw();}}
-  finally{loading=false;if(current())timer=setTimeout(refresh,60000);}
+  clearTimeout(timer);if(!current()||loading)return;if(document.hidden){timer=setTimeout(refresh,60000);return;}loading=true;marketPending=true;draw();
+  try{market=employeeStockMarket(await readEmployeeStockMarket(api,mode,Date.now(),seq));}
+  catch(err){if(current()&&err.name!=='AbortError')market={price:null,rate:null,quote:null,fx:null};}
+  finally{loading=false;marketPending=false;if(current()){draw();timer=setTimeout(refresh,60000);}}
  }
  function visible(){if(!document.hidden)void refresh();}
  draw();if(api&&!initial.historicalCutoff){document.addEventListener('visibilitychange',visible);void refresh();}else {manual=true;draw();}
