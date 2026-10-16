@@ -369,10 +369,23 @@ def remote_command(token: str, command: str) -> str:
     return output if isinstance(output, str) else ""
 
 
-def latest_deployment(token: str) -> dict[str, Any]:
-    deployment = get_json(SCM_URL + "/api/deployments/latest", token)
-    if not deployment.get("id"):
+def latest_deployment(token: str, *, timeout_seconds: float = 90) -> dict[str, Any]:
+    # Only this deployment-status endpoint may return HTTP 202 while work is in progress.
+    status, data, _ = request("GET", SCM_URL + "/api/deployments/latest", token,
+                             timeout=min(90, timeout_seconds), max_bytes=4 * 1024 * 1024)
+    if status not in (200, 202):
+        raise ReleaseError(f"SCM deployment-status read returned HTTP {status}.")
+    try:
+        deployment = json.loads(data)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise ReleaseError("SCM deployment status returned invalid JSON.") from None
+    if not isinstance(deployment, dict):
+        raise ReleaseError("SCM deployment status returned an unexpected response shape.")
+    if not isinstance(deployment.get("id"), str) or not deployment["id"].strip():
         raise ReleaseError("SCM did not identify the latest deployment.")
+    if status == 202:
+        # HTTP acceptance/in-progress can never establish terminal success or permit rollback.
+        deployment["complete"] = False
     return deployment
 
 
@@ -400,11 +413,13 @@ def rollback_is_safe(previous_id: str, latest: dict[str, Any] | None) -> bool:
 def wait_for_deployment(token: str, previous_id: str, timeout_seconds: int = DEPLOY_TIMEOUT_SECONDS) -> dict[str, Any]:
     deadline = time.monotonic() + timeout_seconds
     latest: dict[str, Any] | None = None
-    while time.monotonic() < deadline:
-        latest = latest_deployment(token)
+    while (remaining := deadline - time.monotonic()) > 0:
+        latest = latest_deployment(token, timeout_seconds=remaining)
+        if time.monotonic() >= deadline:
+            break
         if latest.get("id") != previous_id and is_terminal(latest):
             return latest
-        time.sleep(POLL_SECONDS)
+        time.sleep(min(POLL_SECONDS, max(0, deadline - time.monotonic())))
     raise ReleaseError("Deployment did not reach a terminal state before the timeout.")
 
 

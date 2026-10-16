@@ -23,6 +23,19 @@ deploy = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(deploy)
 
 
+class DeploymentClock:
+    def __init__(self):
+        self.now = 0.0
+        self.sleeps = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
 class DeployBankingTests(unittest.TestCase):
     def response(self, body, headers=None):
         response = MagicMock()
@@ -124,6 +137,99 @@ class DeployBankingTests(unittest.TestCase):
         self.assertFalse(deploy.rollback_is_safe("old", {"id": "new", "complete": False}))
         self.assertFalse(deploy.rollback_is_safe("old", {"id": "old", "complete": True}))
         self.assertTrue(deploy.rollback_is_safe("old", {"id": "new", "complete": True}))
+
+    def test_http_202_is_pending_only_for_the_fixed_deployment_status_endpoint(self):
+        body = json.dumps({"id": "new", "status": 4, "complete": True}).encode()
+        with patch.object(deploy, "request", return_value=(202, body, {})) as request:
+            pending = deploy.latest_deployment("synthetic-token")
+            request.assert_called_once_with("GET", deploy.SCM_URL + "/api/deployments/latest",
+                                            "synthetic-token", timeout=90, max_bytes=4 * 1024 * 1024)
+            self.assertEqual(pending["id"], "new")
+            self.assertFalse(deploy.is_terminal(pending))
+            self.assertFalse(deploy.is_success(pending))
+            self.assertFalse(deploy.rollback_is_safe("before", pending))
+            with self.assertRaisesRegex(deploy.ReleaseError, "HTTP 202"):
+                deploy.get_json(deploy.SCM_URL + "/unrelated", "synthetic-token")
+
+    def test_deployment_status_requires_bounded_json_and_a_string_identity(self):
+        invalid = [b"PRIVATE_RESPONSE", b"[]", b"null", b"{}", b'{"id":42}', b'{"id":" "}', b""]
+        for status in (200, 202):
+            for body in invalid:
+                with self.subTest(status=status, body=body), \
+                     patch.object(deploy, "request", return_value=(status, body, {})), \
+                     self.assertRaises(deploy.ReleaseError) as caught:
+                    deploy.latest_deployment("synthetic-token")
+                rendered = ''.join(traceback.format_exception(caught.exception))
+                self.assertNotIn("PRIVATE_RESPONSE", rendered)
+        response = self.response(b"", {"Content-Length": str(4 * 1024 * 1024 + 1)})
+        response.status = 202
+        with patch.object(deploy.urllib.request.OpenerDirector, "open", return_value=response), \
+             self.assertRaisesRegex(deploy.ReleaseError, "size bound"):
+            deploy.latest_deployment("synthetic-token")
+        response.read.assert_not_called()
+
+    def test_deployment_status_refuses_other_http_statuses_and_redirects(self):
+        for status in (201, 204, 301, 401, 403, 500):
+            with self.subTest(status=status), \
+                 patch.object(deploy, "request", return_value=(status, b"PRIVATE_RESPONSE", {})), \
+                 self.assertRaises(deploy.ReleaseError):
+                deploy.latest_deployment("synthetic-token")
+        redirect = urllib.error.HTTPError("url", 302, "redirect", {"Location": "https://attacker.invalid/"}, None)
+        with patch.object(deploy.urllib.request.OpenerDirector, "open", side_effect=redirect), \
+             self.assertRaisesRegex(deploy.ReleaseError, "redirect"):
+            deploy.latest_deployment("synthetic-token")
+
+    def test_async_poll_waits_for_new_http_200_terminal_success_or_failure(self):
+        for terminal_status in (3, 4):
+            with self.subTest(terminal_status=terminal_status):
+                clock = DeploymentClock()
+                terminal = {"id": "new", "status": terminal_status, "complete": True}
+                replies = [(200, {"id": "before", "status": 4, "complete": True}),
+                           (202, {"id": "new", "status": 4, "complete": True}),
+                           (200, terminal)]
+                def read(*args, **kwargs):
+                    status, body = replies.pop(0)
+                    return status, json.dumps(body).encode(), {}
+                with patch.object(deploy, "request", side_effect=read) as request, \
+                     patch.object(deploy.time, "monotonic", side_effect=clock.monotonic), \
+                     patch.object(deploy.time, "sleep", side_effect=clock.sleep):
+                    result = deploy.wait_for_deployment("synthetic-token", "before", timeout_seconds=12)
+                self.assertEqual(result, terminal)
+                self.assertEqual(deploy.is_success(result), terminal_status == 4)
+                self.assertEqual(clock.sleeps, [5, 5])
+                self.assertEqual([call.kwargs["timeout"] for call in request.call_args_list], [12, 7, 2])
+
+    def test_async_pending_times_out_without_inventing_terminal_success(self):
+        clock = DeploymentClock()
+        body = json.dumps({"id": "new", "status": 4, "complete": True}).encode()
+        with patch.object(deploy, "request", return_value=(202, body, {})) as request, \
+             patch.object(deploy.time, "monotonic", side_effect=clock.monotonic), \
+             patch.object(deploy.time, "sleep", side_effect=clock.sleep), \
+             self.assertRaisesRegex(deploy.ReleaseError, "terminal state before the timeout"):
+            deploy.wait_for_deployment("synthetic-token", "before", timeout_seconds=12)
+        self.assertEqual(request.call_count, 3)
+        self.assertEqual(clock.now, 12)
+        self.assertEqual(clock.sleeps, [5, 5, 2])
+
+    def test_late_terminal_response_does_not_pass_poll_deadline(self):
+        clock = DeploymentClock()
+        def read(*args, **kwargs):
+            self.assertEqual(kwargs["timeout"], 2)
+            clock.now = 3
+            return 200, b'{"id":"new","status":4,"complete":true}', {}
+        with patch.object(deploy, "request", side_effect=read), \
+             patch.object(deploy.time, "monotonic", side_effect=clock.monotonic), \
+             patch.object(deploy.time, "sleep") as sleep, \
+             self.assertRaisesRegex(deploy.ReleaseError, "terminal state before the timeout"):
+            deploy.wait_for_deployment("synthetic-token", "before", timeout_seconds=2)
+        sleep.assert_not_called()
+
+    def test_final_status_reconciliation_never_treats_http_202_as_terminal(self):
+        body = b'{"id":"new","status":4,"complete":true}'
+        with patch.object(deploy, "wait_for_deployment", side_effect=deploy.ReleaseError("timed out")), \
+             patch.object(deploy, "request", return_value=(202, body, {})), \
+             self.assertRaisesRegex(deploy.ReleaseError, "timed out"):
+            deploy.wait_after_publish("synthetic-token", "before")
 
     def test_http_401_is_returned_only_when_explicitly_allowed(self):
         error = urllib.error.HTTPError("url", 401, "denied", {}, None)
@@ -379,6 +485,49 @@ class DeployBankingTests(unittest.TestCase):
                     with self.assertRaises(deploy.ReleaseError):
                         deploy.publish(args)
                 restore.assert_not_called()
+
+    def test_publish_never_restarts_rolls_back_or_resubmits_while_http_202_is_pending(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            package, manifest_path, manifest, sha = self.package(folder)
+            evidence = folder / "evidence"
+            evidence.mkdir()
+            snapshot = dict(schemaVersion=1, app=deploy.APP, resourceId=deploy.RESOURCE_ID,
+                            sourceSha=sha, releaseArchiveSha256=manifest["archive"]["sha256"],
+                            artifactDigest="digest", rollbackLocation=f"/home/Banking/releases/before-{sha}.zip",
+                            rollbackSha256="c" * 64, previousBuild="old", previousDeploymentId="before")
+            (evidence / "rollback-manifest.json").write_text(json.dumps(snapshot))
+            args = Namespace(source_sha=sha, package=str(package), manifest=str(manifest_path),
+                             artifact_digest="digest", evidence_dir=str(evidence), repo=temp)
+            clock = DeploymentClock()
+            original_wait = deploy.wait_for_deployment
+            def bounded_wait(token, previous_id):
+                return original_wait(token, previous_id, timeout_seconds=6)
+            # Even a contradictory complete:true body is pending when the HTTP status is 202.
+            body = b'{"id":"new","status":4,"complete":true}'
+            with patch.object(deploy, "verify_azure_context"), \
+                 patch.object(deploy, "read_hosted_baseline", return_value=(
+                     {}, {"build": "old"}, {"id": "before", "status": 4, "complete": True})), \
+                 patch.object(deploy, "access_token", return_value="synthetic-token"), \
+                 patch.object(deploy, "remote_command", return_value=""), \
+                 patch.object(deploy, "stage_and_verify_pension_schema", return_value={"verified": True}), \
+                 patch.object(deploy, "request", return_value=(202, body, {})), \
+                 patch.object(deploy, "wait_for_deployment", side_effect=bounded_wait), \
+                 patch.object(deploy.time, "monotonic", side_effect=clock.monotonic), \
+                 patch.object(deploy.time, "sleep", side_effect=clock.sleep), \
+                 patch.object(deploy, "post_zip") as upload, \
+                 patch.object(deploy, "run_az") as restart, \
+                 patch.object(deploy, "verify_runtime_files") as files, \
+                 patch.object(deploy, "restore_remote_backup") as rollback:
+                with self.assertRaises(deploy.ReleaseError):
+                    deploy.publish(args)
+            upload.assert_called_once_with("synthetic-token", package)
+            restart.assert_not_called()
+            files.assert_not_called()
+            rollback.assert_not_called()
+            result = json.loads((evidence / "release-evidence.json").read_text())
+            self.assertFalse(result["rollbackAttempted"])
+            self.assertFalse(result["controlledRestartIssued"])
 
     def test_postdeploy_smoke_failure_after_terminal_success_restores_backup(self):
         with tempfile.TemporaryDirectory() as temp:
