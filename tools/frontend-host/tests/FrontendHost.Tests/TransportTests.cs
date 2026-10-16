@@ -14,6 +14,21 @@ namespace FrontendHost.Tests;
 public sealed class TransportTests : IAsyncLifetime
 {
     [Fact]
+    public async Task EmployeeStockModuleAndBinaryPreviewUseSharedPrivateApiBoundary()
+    {
+        using var module=await client.GetAsync("/employee-stock-ui.js");Assert.Equal(HttpStatusCode.OK,module.StatusCode);
+        Assert.Contains("mountEmployeeStockPreview",await module.Content.ReadAsStringAsync());
+        upstream.Responder=request=>{
+            Assert.Equal("/api/employee-stocks/preview",request.Uri.AbsolutePath);Assert.Equal("Live",request.GetValues("X-Banking-Mode").Single());
+            var response=new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent("{}",Encoding.UTF8,"application/json")};
+            response.Headers.CacheControl=new(){NoStore=true,Private=true};return response;
+        };
+        using var upload=new HttpRequestMessage(HttpMethod.Post,"/api/employee-stocks/preview"){Content=new ByteArrayContent([80,75,3,4,0,255])};
+        upload.Content.Headers.ContentType=new("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        upload.Headers.Add("X-Banking-Client","web");upload.Headers.Add("X-Banking-Mode","Live");upload.Headers.Add("Origin",Origin);
+        using var result=await client.SendAsync(upload);Assert.Equal(HttpStatusCode.OK,result.StatusCode);Assert.True(result.Headers.CacheControl!.NoStore);
+    }
+    [Fact]
     public async Task PensionModuleAndLargePdfUploadAndPrivateDownloadUseSharedApiBoundary()
     {
         using var module = await client.GetAsync("/pension-import-ui.js");

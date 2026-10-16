@@ -107,7 +107,7 @@ internal static class FrontendHostApplication
         ["/vendor/liquid-glass/liquid-glass.js"] = "vendor/liquid-glass/liquid-glass.js",
         ["/vendor/lightweight-charts-5.2.0.js"] = "vendor/lightweight-charts-5.2.0.js",
         ["/loans-ui.js"] = "loans-ui.js", ["/ai-workspace-ui.js"] = "ai-workspace-ui.js",
-        ["/ai-workspace.css"] = "ai-workspace.css", ["/wealth.css"] = "wealth.css", ["/wealth-ui.js"] = "wealth-ui.js", ["/pension-import-ui.js"] = "pension-import-ui.js", ["/saxo-session.js"] = "saxo-session.js",
+        ["/ai-workspace.css"] = "ai-workspace.css", ["/wealth.css"] = "wealth.css", ["/wealth-ui.js"] = "wealth-ui.js", ["/pension-import-ui.js"] = "pension-import-ui.js", ["/employee-stock-ui.js"] = "employee-stock-ui.js", ["/saxo-session.js"] = "saxo-session.js",
         ["/voice-companion.css"] = "voice-companion.css", ["/overview-advisor.js"] = "overview-advisor.js",
         ["/loading-ui.js"] = "loading-ui.js", ["/loading.css"] = "loading.css", ["/goals-ui.js"] = "goals-ui.js",
         ["/goals.css"] = "goals.css", ["/overview.js"] = "overview.js", ["/overview.css"] = "overview.css",

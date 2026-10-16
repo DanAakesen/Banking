@@ -69,7 +69,7 @@ jobs:
       - name: Run isolated backend tests
         run: |
           dotnet restore tests/Banking.Tests/Banking.Tests.csproj --no-dependencies --locked-mode
-          dotnet test tests/Banking.Tests/Banking.Tests.csproj --configuration Release --no-restore --filter "FullyQualifiedName~AnnotationSecurityTests|FullyQualifiedName~Pension|FullyQualifiedName~SaxoMarketDataTests|FullyQualifiedName~SaxoPortfolioTests|FullyQualifiedName~SaxoReadinessTests|FullyQualifiedName~LocalAdvisorTests"
+          dotnet test tests/Banking.Tests/Banking.Tests.csproj --configuration Release --no-restore --filter "FullyQualifiedName~EmployeeStock|FullyQualifiedName~AnnotationSecurityTests|FullyQualifiedName~Pension|FullyQualifiedName~SaxoMarketDataTests|FullyQualifiedName~SaxoPortfolioTests|FullyQualifiedName~SaxoReadinessTests|FullyQualifiedName~LocalAdvisorTests"
 
       - name: Run frontend host tests
         run: |
