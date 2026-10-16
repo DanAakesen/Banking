@@ -116,7 +116,8 @@ export function renderEmployeeStockReport(out,report,{S,e,money,date,today,api},
 
  }
  out.querySelectorAll('[data-stock-currency]').forEach(button=>button.onclick=()=>{currency=button.dataset.stockCurrency;out.querySelectorAll('[data-stock-currency]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));draw();});
- out.querySelectorAll('#stock-valuation input').forEach(el=>el.addEventListener('input',()=>{manual=true;draw();}));
+ out.querySelectorAll('#stock-valuation .stock-profile input').forEach(el=>el.addEventListener('input',()=>{manual=true;draw();}));
+ field('cutoff').oninput=draw;
  function draw(){
   if(disposed)return;const chart=field('chart'),cutoff=field('cutoff');lastWidth=chart.clientWidth;
   const focused=chart.querySelector('[data-stock-point]:focus')?.dataset?.stockPoint,tableOpen=chart.querySelector('.stock-schedule-table')?.open;
