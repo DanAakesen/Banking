@@ -25,9 +25,15 @@ public sealed partial class PensionEndpointTests
     sealed class Host : IAsyncDisposable
     {
         public WebApplication App = null!;
-        readonly SqliteConnection demo = new("Data Source=:memory:"), live = new("Data Source=:memory:");
+        // Keep each isolated in-memory database alive, but never share its connection
+        // object between concurrent request contexts (including EF function registration).
+        readonly SqliteConnection demo = Keeper(), live = Keeper();
+        static SqliteConnection Keeper() => new(new SqliteConnectionStringBuilder {
+            DataSource = "pension-endpoint-" + Guid.NewGuid().ToString("N"), Mode = SqliteOpenMode.Memory,
+            Cache = SqliteCacheMode.Shared, Pooling = false
+        }.ToString());
         public BrowserSessions Sessions = null!;
-        public async Task Init()
+        public async Task Init(IPensionPdfReader? reader = null)
         {
             await demo.OpenAsync(); await live.OpenAsync();
             var b = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
@@ -38,8 +44,8 @@ public sealed partial class PensionEndpointTests
             // In-memory fixture sessions only, not an App Service file or real owner credential.
             b.Services.AddSingleton(s => Sessions = new BrowserSessions(new Clock(), new TestEnv(), b.Configuration, s.GetRequiredService<IDataProtectionProvider>()));
             b.Services.AddSingleton<LocalToken>(); b.Services.AddSingleton<WorkspaceCatalog>(); b.Services.AddScoped<Workspace>();
-            b.Services.AddScoped(s => new BankingDb(Options(s.GetRequiredService<Workspace>().Mode == "Live" ? live : demo), s.GetRequiredService<Workspace>()));
-            b.Services.AddSingleton<IPensionPdfReader, Reader>(); b.Services.AddScoped<PensionImportService>(); b.Services.AddScoped<WealthService>();
+            b.Services.AddScoped(s => new BankingDb(Options((s.GetRequiredService<Workspace>().Mode == "Live" ? live : demo).ConnectionString), s.GetRequiredService<Workspace>()));
+            b.Services.AddSingleton<IPensionPdfReader>(reader ?? new Reader()); b.Services.AddScoped<PensionImportService>(); b.Services.AddScoped<WealthService>();
             App = b.Build();
             App.Use(async (ctx,next) => { try { await next(); } catch (ApiFailure f) {ctx.Response.StatusCode=f.Status;await ctx.Response.WriteAsJsonAsync(new {error=f.Code,details=f.Details});} catch(DbUpdateConcurrencyException) {ctx.Response.StatusCode=409;await ctx.Response.WriteAsJsonAsync(new {error="VERSION_CONFLICT"});} });
             App.UseMiddleware<LocalAccessMiddleware>(); App.UseMiddleware<WorkspaceMiddleware>(); App.MapPensionApi();
@@ -124,13 +130,37 @@ public sealed partial class PensionEndpointTests
     [Fact]
     public async Task SimultaneousIdenticalUploadsRetainTwoReceiptsAndOneContentRecord()
     {
-        await using var host=new Host();await host.Init();using var owner=host.Client();var bytes=SyntheticPensionReport.Create("later");
-        var results=await Task.WhenAll(owner.PostAsync("/api/pension/uploads",Pdf(bytes)),owner.PostAsync("/api/pension/uploads",Pdf(bytes)));
-        Assert.All(results,r=>r.EnsureSuccessStatusCode());
-        var a=await results[0].Content.ReadFromJsonAsync<JsonElement>();var b=await results[1].Content.ReadFromJsonAsync<JsonElement>();
-        Assert.NotEqual(a.GetProperty("id").GetGuid(),b.GetProperty("id").GetGuid());Assert.Equal(a.GetProperty("hash").GetString(),b.GetProperty("hash").GetString());
-        var history=await owner.GetFromJsonAsync<JsonElement>("/api/pension/uploads");Assert.Equal(2,history.GetProperty("total").GetInt32());Assert.Equal(0,await host.WealthCount());
-        Assert.Equal(1,await host.DocumentCount());
+        for (var pair = 0; pair < 5; pair++)
+        {
+            var reader = new OverlappingReader();
+            await using var host=new Host();await host.Init(reader);using var owner=host.Client();var bytes=SyntheticPensionReport.Create("later");
+            var results=await Task.WhenAll(owner.PostAsync("/api/pension/uploads",Pdf(bytes)),owner.PostAsync("/api/pension/uploads",Pdf(bytes)));
+            Assert.All(results,r=>r.EnsureSuccessStatusCode()); Assert.Equal(2,reader.Arrivals);
+            var a=await results[0].Content.ReadFromJsonAsync<JsonElement>();var b=await results[1].Content.ReadFromJsonAsync<JsonElement>();
+            Assert.NotEqual(a.GetProperty("id").GetGuid(),b.GetProperty("id").GetGuid());Assert.Equal(a.GetProperty("hash").GetString(),b.GetProperty("hash").GetString());
+            Assert.Equal("NeedsReview",a.GetProperty("status").GetString());Assert.Equal("NeedsReview",b.GetProperty("status").GetString());
+            foreach (var receipt in new[] { a, b })
+            {
+                Assert.False(receipt.GetProperty("financialSaved").GetBoolean());
+                Assert.Equal(bytes, await owner.GetByteArrayAsync($"/api/pension/uploads/{receipt.GetProperty("id").GetGuid()}/original"));
+            }
+            var history=await owner.GetFromJsonAsync<JsonElement>("/api/pension/uploads");Assert.Equal(2,history.GetProperty("total").GetInt32());Assert.Equal(0,await host.WealthCount());
+            Assert.Equal(1,await host.DocumentCount());
+        }
+    }
+    sealed class OverlappingReader : IPensionPdfReader
+    {
+        readonly TaskCompletionSource both = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int arrivals;
+        public int Arrivals => Volatile.Read(ref arrivals);
+        public async Task<PensionReport> Read(byte[] bytes, CancellationToken ct)
+        {
+            if (Interlocked.Increment(ref arrivals) == 2) both.TrySetResult();
+            // Both HTTP requests must reach parsing before either completes. A request-wide
+            // lock/serialized submission would time out, rather than hiding the regression.
+            await both.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+            return await new Reader().Read(bytes, ct);
+        }
     }
     [Fact]
     public async Task SyntheticOwnerFixtureExercisesHistoryWithoutRealFileAcceptance()
