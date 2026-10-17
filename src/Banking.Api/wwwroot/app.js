@@ -283,7 +283,13 @@ function paintScene(stage){
  const cards=stage.querySelector('.scene-cards');if(!cards)return;
  const over=cards.scrollWidth>cards.clientWidth+2;cards.classList.toggle('is-overflowing',over);
  let more=stage.querySelector('.scene-more');
- if(over&&!more){more=document.createElement('button');more.type='button';more.className='scene-more';more.setAttribute('aria-label',t('More'));more.innerHTML='<span aria-hidden="true">›</span>';more.onclick=()=>{const items=[...cards.children],view=cards.scrollLeft+cards.clientWidth,next=items.find(x=>x.offsetLeft+x.offsetWidth>view+4);cards.scrollTo({left:next?next.offsetLeft-items[0].offsetLeft:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});};stage.append(more);}
+ if(over&&!more){more=document.createElement('button');more.type='button';more.className='scene-more';more.setAttribute('aria-label',t('More'));more.innerHTML='<span aria-hidden="true">›</span>';more.onclick=()=>{
+  // Cards can have the stage as offsetParent; compare only scroll-content coordinates.
+  const viewport=cards.getBoundingClientRect(),view=cards.scrollLeft+cards.clientWidth;
+  const items=[...cards.children].map(x=>{const r=x.getBoundingClientRect();return {left:r.left-viewport.left-cards.clientLeft+cards.scrollLeft,width:r.width};});
+  const next=items.find(x=>x.left+x.width>view+4);
+  cards.scrollTo({left:next?next.left-items[0].left:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+ };stage.append(more);}
  else if(!over)more?.remove();
 }
 function composeScene(main){

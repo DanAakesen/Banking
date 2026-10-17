@@ -462,11 +462,12 @@ What goes on the photo, per page:
 | Budgets | Available to spend, with a variance tag and budget | Income, Expenses, Savings, each with a meter against budget; unsaved drafts show planned amounts |
 | Goals | Saved across goal accounts | Goal count, Monthly savings plan, Closest-to-target goal with a progress ring |
 | Markets | Selected instrument's Saxo LIVE price, with the change against the previous close and the provider delay (trading desk, 28 September 2026) | Day range, Quote time, Your position; controls: instrument search, Saxo environment and connection, with the read time |
-| Investments | Saxo SIM account value, with the cash/invested bar when it reconciles, and the simulation note | Booked cash (with Available to trade), Invested (with holding count), Unrealised trade P&L (with % of purchase value when known); status and refresh in the control pill, with the read time beneath it |
+| Investments | Saxo SIM or LIVE account value, explicitly labelled for the selected environment, with the cash/invested bar when it reconciles and the environment note | Booked cash (with Available to trade), Invested (with holding count), Unrealised trade P&L (with % of purchase value when known); status and refresh in the control pill, with the read time beneath it |
 | Pension | Recorded statement value in the selected currency; unknown when none recorded | Recorded product count and oldest statement date; one Add statement value action and manual-update status, using the shared Accounts control group |
 
 Implementation:
 - `composeScene` in app.js builds the stage from each page's own rendered summary and hides that summary (`.scene-sourced`). Page actions, live updates and filters therefore keep working.
+- Overflowing glass-card rows use shared content-relative coordinates for More, advance to the clipped card and wrap at the end. Recomposition preserves scroll position; phones keep native horizontal swiping.
 - Budgets re-composes when its summary changes.
 - Markets search lookups resolve outside its workspace root.
 - The glass is always light-on-dark because the photo is theme-independent.
