@@ -568,7 +568,7 @@ export function createInvestmentWorkspace({S,e,money,api,post,header,errorText,c
  }
  function drawSource(){
   const {m,holdings,costTotal}=view,pnlShare=m.pnl!==null&&costTotal>0?m.pnl/costTotal*100:null;
-  const metrics=[['portfolio',L('Account value','Kontoværdi'),m.total,''],
+  const metrics=[['portfolio',L(`Saxo ${environment} account value`,`Saxo ${environment}-kontoværdi`),m.total,''],
    ['cash',L('Booked cash','Bogførte kontanter'),m.cash,m.available!==null?`${L('Available to trade','Til rådighed for handel')} ${amount(m.available,m.currency)}`:''],
    ['invested',L('Invested','Investeret'),m.invested,portfolio?`${holdings.length}${portfolio.hasMore?'+':''} ${holdings.length===1?L('holding','beholdning'):L('holdings','beholdninger')}`:''],
    ['pnl',L('Unrealised trade P&L','Urealiseret handelsresultat'),m.pnl,pnlShare!==null?`${pct(pnlShare)} ${L('on','af')} ${amount(costTotal,m.currency)} ${L('purchase value','købsværdi')}`:'']];
