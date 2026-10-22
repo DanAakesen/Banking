@@ -229,6 +229,16 @@ public sealed class SyncService(BankingDb db, ProviderRegistry providers, Vault 
 
 public sealed class SyncWorker(IServiceScopeFactory scopes, IConfiguration config, WorkspaceCatalog catalog, TimeProvider clock, ILogger<SyncWorker> log, IHostEnvironment environment) : BackgroundService
 {
+    // The fictional Demo bank generates its history relative to the clock on each sync. Its stored 180-day
+    // validity would otherwise freeze that history permanently, so renew it shortly before it lapses.
+    internal static readonly TimeSpan DemoRenewalWindow = TimeSpan.FromDays(30);
+    internal static async Task RenewDemoConsent(BankingDb db, DateTimeOffset now, CancellationToken ct)
+    {
+        var renewBefore = now + DemoRenewalWindow;
+        var renewed = now + ProductDemoProvider.ConsentValidity;
+        await db.Connections.Where(x => x.IsDemo && x.Provider == "product-demo" && x.Status == "Active" && x.ValidUntil <= renewBefore)
+            .ExecuteUpdateAsync(x => x.SetProperty(c => c.ValidUntil, renewed), ct);
+    }
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (config.GetValue<bool>("Local:DisableWorker")) return;
@@ -243,6 +253,7 @@ public sealed class SyncWorker(IServiceScopeFactory scopes, IConfiguration confi
                     scope.ServiceProvider.GetRequiredService<Workspace>().Select(mode);
                     var db = scope.ServiceProvider.GetRequiredService<BankingDb>();
                     var now = clock.GetUtcNow();
+                    if (mode == "Demo") await RenewDemoConsent(db, now, stoppingToken);
                     await db.Connections.Where(x => x.Status == "Active" && x.ValidUntil <= now)
                         .ExecuteUpdateAsync(x => x.SetProperty(c => c.Status, "ReconnectRequired"), stoppingToken);
                     var connections = await db.Connections.Where(x => x.Status == "Active" && x.ValidUntil > now).Select(x => x.Id).ToListAsync(stoppingToken);
