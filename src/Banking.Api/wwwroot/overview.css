@@ -137,7 +137,7 @@
 /* Section-scoped periods: daily cards, current assets, then wealth performance. */
 .w360-heading{flex-wrap:wrap;align-items:center}.w360-heading .overview-controls{margin-left:auto;min-width:0}.w360-heading .controls{justify-content:flex-end;flex-wrap:wrap}.w360-body{margin-top:12px}.w360-pages{padding-bottom:8px}
 .w360-wealth{padding:18px 0 24px;min-width:0}.w360-wealth-controls{display:flex;justify-content:flex-end;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:18px}.w360-wealth-controls label{display:flex;align-items:center;gap:10px;font-size:.8rem;color:var(--muted)}.w360-wealth-controls select{width:auto;min-width:130px}.w360-wealth-custom{display:flex;gap:8px}.w360-wealth-custom[hidden]{display:none}.w360-wealth-custom input{min-width:0;max-width:155px}.w360-wealth-panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.w360-wealth-panels .w360-panel{display:block;grid-column:auto;grid-row:auto}.w360-wealth-panels .w360-panel>header{display:flex}.w360-wealth-panels .w360-details{margin-top:14px;min-width:0}.w360-wealth-panels .w360-panel{grid-template-columns:1fr}
-@container overview (max-width:1099px){.w360-wealth-panels{grid-template-columns:1fr}}
+@container overview (max-width:759px){.w360-wealth-panels{grid-template-columns:1fr}}
 @container overview (max-width:700px){.w360-heading .overview-controls{width:100%}.w360-wealth-controls{gap:8px}.w360-wealth-panels .w360-panel{display:block}.w360-invest-visual{flex-wrap:wrap}.w360-invest-visual>div{max-width:100%}.w360-invest-visual small{overflow-wrap:anywhere}}
 .w360-body .w360-panel[data-panel="0"]{display:block}
 #ov-motion>.section-head{flex-wrap:wrap;gap:12px}#ov-motion>.section-head>.field{margin-left:auto;display:flex;align-items:center;gap:10px}#ov-motion>.section-head select{width:auto;min-width:130px}
@@ -156,6 +156,7 @@
 
 /* Latest broker snapshot stays outside the personal allocation and dated wealth period. */
 .w360-saxo{min-width:0;padding:20px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+.stock-360-current+.w360-saxo{margin-top:24px}
 .w360-saxo>header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
 .w360-saxo h2{margin:0;font-family:Georgia,serif;font-size:1.5rem;font-weight:400}
 .w360-saxo>header>div{display:flex;align-items:center;gap:14px;flex-wrap:wrap}

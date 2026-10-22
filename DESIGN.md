@@ -472,6 +472,7 @@ Implementation:
 - Markets search lookups resolve outside its workspace root.
 - The glass is always light-on-dark because the photo is theme-independent. Glass cards blur the photo behind them at 30px with a slightly stronger dark tint, so card text stays legible over bright scenes (22 October 2026).
 - The 360 title is a two-line greeting instead of "360": "Welcome Dan / Here is your 360 finance overview" ("Hej Dan / Her er dit 360 økonomi overblik" in Danish). The route, navigation label and scenic-header behaviour keep the name 360 (owner request, 22 October 2026).
+- On 360, the Investments and Pension panels sit side by side while the overview container is at least 760px wide (they hold little data) and stack below that. Cards below them, such as Saxo SIM after Microsoft employee shares, keep the same 24px gap as the rest of the page (owner request, 22 October 2026).
 - Reduced transparency uses solid dark surfaces.
 - Styles are in the "Composed scenic headers" block at the end of markets.css.
 
