@@ -120,3 +120,14 @@ Dan asked for the pending presentation changes to be deployed. Production still 
 - Diagnostic run `39738973519` at the same `ef8eaf7` failed at its first staging command. The earlier run had left a staged archive with different rebuild bytes, and the fail-closed checksum rule correctly refuses to reuse it. A same-SHA retry cannot pass; a fresh `main` SHA is needed.
 - The `schema-diagnostic` job runs only while `BANKING_AZURE_DEPLOY_ENABLED` is `false`. That variable was set to `false` for the diagnosis and must be restored to `true` afterwards. This is a non-secret toggle; no secret, role or identity changed.
 - The cause of the schema-check silence and the early unzip failure is not yet established. Candidates are App Service disk or CPU pressure from accumulated release staging, or a slow Azure SQL resume. The check has not been bypassed or weakened.
+
+### Root cause and retention — 22 October 2026
+
+The read-only storage report added to `diagnose-schema` (run `39741081275`, `76eda59`) showed the App Service `/home` volume at 100% (10 GiB total, 0 KiB free). `/home/Banking/releases` held about 40 `before-*.zip` rollback archives (~64 MiB each), 11 unzipped `<sha>/` staging folders (~187 MiB each) and the accumulated `<sha>.zip` candidates. With no free space the staging unzip failed (and the earlier main-container check had no room to run), so no gate was ever genuinely failed or weakened.
+
+Dan authorised this retention scope on 22 October 2026 ("Prune staging copies + old rollback zips"). The `deploy` job now runs `scripts/deploy-banking.py prune-release-storage` before rollback capture. It deletes only:
+
+- unzipped `<40-hex>/` and `restore-<40-hex>/` folders under `/home/Banking/releases` (regenerable from their zips, which are checksum-verified on every stage);
+- `before-*.zip` rollback archives beyond the newest five, always keeping `before-<live build>.zip` and `before-<candidate>.zip`.
+
+It never touches `/home/site/wwwroot`, symlinks, `<sha>.zip` candidate archives, `.schema-preflight` evidence or the database. At most 200 names are removed per run, in batches, and the removed names plus before/after free space are logged. If less than 768 MiB remains free afterwards, or free space cannot be measured, the release stops before capture with a clear message instead of failing obscurely during unzip. `<sha>.zip` candidates are not pruned and grow by about 65 MiB per release; review that if free space falls again.

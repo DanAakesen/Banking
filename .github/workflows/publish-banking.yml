@@ -222,6 +222,16 @@ jobs:
           assert manifest["archive"]["sha256"] == hashlib.sha256(archive.read_bytes()).hexdigest()
           PY
 
+      - name: Prune stale release staging on Azure
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.validate-and-package.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy-banking.py prune-release-storage \
+            --source-sha "$SOURCE_SHA" \
+            --evidence-dir "$RUNNER_TEMP/banking-prune-evidence"
+
       - name: Capture code-only rollback evidence on Azure
         id: capture
         shell: bash

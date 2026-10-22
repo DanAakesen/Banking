@@ -868,37 +868,105 @@ def private_path_guard() -> str:
 # Read-only and always exits 0. Emits only byte counts and fixed paths, never file contents or environment values.
 STORAGE_REPORT_COMMAND = (
     "df -Pk /home/Banking/releases | tail -n 1; echo '--'; "
-    "du -sk /home/Banking/releases/* /home/Banking/releases/.schema-preflight 2>/dev/null; echo '--'; "
-    "du -sk /home/site/wwwroot /home/site/deployments /home/LogFiles /home/data 2>/dev/null; exit 0"
+    "du -sk /home/Banking/releases /home/site/wwwroot /home/site/deployments /home/LogFiles /home/data 2>/dev/null; "
+    "echo '--'; "
+    "du -sk /home/Banking/releases/* /home/Banking/releases/.schema-preflight 2>/dev/null; exit 0"
 )
 STORAGE_DF_LINE = re.compile(r"^\S+\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)%\s+/\S*$")
 STORAGE_DU_LINE = re.compile(r"^(\d+)\s+(/home/[A-Za-z0-9._/-]{1,200})$")
+STORAGE_REPORT_FOLDERS = 30
+# A release needs the candidate zip, its unzipped copy, the rollback zip and a restore copy (~0.5 GiB).
+MIN_FREE_STORAGE_KIB = 768 * 1024
+RELEASE_ROOT = "/home/Banking/releases"
+KEEP_ROLLBACK_ZIPS = 5
+MAX_PRUNE_ENTRIES = 200
+PRUNE_BATCH = 20
+PRUNABLE_STAGING_DIR = re.compile(r"(?:restore-)?[0-9a-f]{40}")
+PRUNABLE_ROLLBACK_ZIP = re.compile(r"before-[A-Za-z0-9._-]{1,120}\.zip")
+PRUNE_LIST_COMMAND = (
+    "set -e; for path in /home /home/Banking /home/Banking/releases; do test ! -L \"$path\" || exit 1; done; "
+    "find /home/Banking/releases -mindepth 1 -maxdepth 1 -printf '%T@ %y %f\\n'"
+)
 
 
-def release_storage_report(token: str, evidence_dir: Path) -> dict[str, Any]:
-    """Best-effort disk evidence so an unexplained staging failure can be diagnosed. Never blocks or authorizes."""
+def release_storage_report(token: str, evidence_dir: Path, name: str = "storage-report") -> dict[str, Any]:
+    """Best-effort disk evidence so an unexplained staging failure can be diagnosed. Never authorizes a release."""
     report: dict[str, Any] = {"available": False}
     try:
         output = remote_command(token, STORAGE_REPORT_COMMAND)
     except ReleaseError:
         output = ""
     entries: list[dict[str, Any]] = []
-    for line in output.splitlines()[:200]:
+    for line in output.splitlines()[:400]:
         line = line.strip()
         disk = STORAGE_DF_LINE.match(line)
         usage = STORAGE_DU_LINE.match(line)
         if disk:
             total, used, free, percent = (int(value) for value in disk.groups())
             report.update(available=True, diskTotalKiB=total, diskUsedKiB=used, diskFreeKiB=free, diskUsedPercent=percent)
-        elif usage and len(entries) < 60:
+        elif usage:
             entries.append({"path": usage.group(2), "kiB": int(usage.group(1))})
-    report["folders"] = entries
+    entries.sort(key=lambda entry: (-entry["kiB"], entry["path"]))
+    report["folderCount"] = len(entries)
+    report["folders"] = entries[:STORAGE_REPORT_FOLDERS]
     try:
-        private_json(evidence_dir / "storage-report.json", report)
+        private_json(evidence_dir / f"{name}.json", report)
     except OSError:
         pass
-    print(json.dumps({"event": "release-storage-report", **report}, sort_keys=True))
+    print(json.dumps({"event": "release-storage-report", "name": name, **report}, sort_keys=True))
     return report
+
+
+def plan_release_prune(listing: str, live_sha: str | None, source_sha: str) -> list[str]:
+    """Names to delete under the release root. Only regenerable staging folders and surplus rollback zips qualify."""
+    entries: list[tuple[float, str, str]] = []
+    for line in listing.splitlines()[:5000]:
+        parts = line.split(" ", 2)
+        if len(parts) != 3:
+            continue
+        try:
+            entries.append((float(parts[0]), parts[1], parts[2]))
+        except ValueError:
+            continue
+    doomed = [name for _, kind, name in entries if kind == "d" and PRUNABLE_STAGING_DIR.fullmatch(name)]
+    if live_sha is not None:
+        protected = {f"before-{live_sha}.zip", f"before-{source_sha}.zip"}
+        rollback = sorted(
+            ((mtime, name) for mtime, kind, name in entries
+             if kind == "f" and PRUNABLE_ROLLBACK_ZIP.fullmatch(name) and name not in protected),
+            reverse=True,
+        )
+        doomed.extend(name for _, name in rollback[KEEP_ROLLBACK_ZIPS:])
+    return sorted(doomed)[:MAX_PRUNE_ENTRIES]
+
+
+def prune_release_storage(args: argparse.Namespace) -> dict[str, Any]:
+    """Bounded retention for the App Service disk. Never touches wwwroot, the live build's files or the database."""
+    source_sha = require_sha(args.source_sha)
+    verify_azure_context()
+    _, runtime, _ = read_hosted_baseline()
+    live = re.fullmatch(r"git-([0-9a-f]{40})", str(runtime.get("build", "")))
+    live_sha = live.group(1) if live else None
+    token = access_token()
+    evidence_dir = Path(args.evidence_dir)
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    before = release_storage_report(token, evidence_dir, "storage-before-prune")
+    doomed = plan_release_prune(remote_command(token, PRUNE_LIST_COMMAND), live_sha, source_sha)
+    for start in range(0, len(doomed), PRUNE_BATCH):
+        paths = " ".join(f"{RELEASE_ROOT}/{name}" for name in doomed[start:start + PRUNE_BATCH])
+        remote_command(token, "set -e; " + private_path_guard() + f"; rm -rf -- {paths}")
+    after = release_storage_report(token, evidence_dir, "storage-after-prune")
+    result = {
+        "liveSha": live_sha, "keptRollbackZips": KEEP_ROLLBACK_ZIPS, "removed": doomed,
+        "removedCount": len(doomed), "diskFreeKiBBefore": before.get("diskFreeKiB"),
+        "diskFreeKiBAfter": after.get("diskFreeKiB"),
+    }
+    private_json(evidence_dir / "prune-result.json", result)
+    print(json.dumps({"event": "release-storage-prune", **result}, sort_keys=True))
+    free = after.get("diskFreeKiB")
+    if free is None or free < MIN_FREE_STORAGE_KIB:
+        raise ReleaseError("Release storage is still nearly full or could not be measured after pruning; free space manually before releasing.")
+    return result
 
 
 def private_json(path: Path, value: dict[str, Any]) -> None:
@@ -1223,6 +1291,9 @@ def write_result(directory: Path, result: dict[str, Any]) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
+    prune = subparsers.add_parser("prune-release-storage")
+    prune.add_argument("--source-sha", required=True)
+    prune.add_argument("--evidence-dir", required=True)
     for command in ("capture", "publish", "diagnose-schema"):
         child = subparsers.add_parser(command)
         child.add_argument("--source-sha", required=True)
@@ -1242,6 +1313,8 @@ def main() -> int:
             capture(args)
         elif args.command == "diagnose-schema":
             diagnose_schema(args)
+        elif args.command == "prune-release-storage":
+            prune_release_storage(args)
         else:
             publish(args)
         return 0
