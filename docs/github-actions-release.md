@@ -110,3 +110,13 @@ Azure login succeeded after this correction in run `38785247092`. Main's decisiv
 PR #8 (`9ac1e5c48e7a943f2cfb477a777c81cb8b76a5f9`) uses .NET/CRT argument encoding and preserves the inner script through Kudu's `exec "$@"` forwarding. A dependency-free Linux .NET test harness reproduces the old exit code 2, verifies script/argv roundtrips including quotes, dollars, backslashes/newlines, and executes real backup/reuse and staged schema command paths against disposable fixtures. Its schema executable is a test stub: no production SQL or app host runs. Validation passes 45 Python protocol tests, 207 Node tests and eight targeted responsive navigation checks; the actual deployed fix remains for Main's fresh release to verify. Timeout limits, rollback, immutable checks, schema gate, CSP and isolation remain intact.
 
 Main's sole release delegate owns the controlled fresh-artifact run and Azure/helper/schema operations. No actual owner-file acceptance or Demo population is claimed. Main has authenticated Dan browser access for private preview and the already-authorized save after rollout; Demo remains held until actual source acceptance.
+
+## Release gate failures and diagnosis — 22 October 2026
+
+Dan asked for the pending presentation changes to be deployed. Production still serves `git-a941b9f6c1649910d9f1b14645de08d0b427bc3b`; no restart, rollback or file change reached the running app.
+
+- Run `39729804069` (`31a16d7`): tests passed; the marker check succeeded, but the schema check wrote no verified terminal result within its 180-second deadline (`pensionSchemaVerified: false`).
+- Run `39736034002` (`ef8eaf7`): tests passed; the SCM command that stages and unzips the uploaded archive exited nonzero after about 1.8 seconds. Run `39736012212` (`0b5e7cb`) was rejected because `main` had already moved.
+- Diagnostic run `39738973519` at the same `ef8eaf7` failed at its first staging command. The earlier run had left a staged archive with different rebuild bytes, and the fail-closed checksum rule correctly refuses to reuse it. A same-SHA retry cannot pass; a fresh `main` SHA is needed.
+- The `schema-diagnostic` job runs only while `BANKING_AZURE_DEPLOY_ENABLED` is `false`. That variable was set to `false` for the diagnosis and must be restored to `true` afterwards. This is a non-secret toggle; no secret, role or identity changed.
+- The cause of the schema-check silence and the early unzip failure is not yet established. Candidates are App Service disk or CPU pressure from accumulated release staging, or a slow Azure SQL resume. The check has not been bypassed or weakened.
