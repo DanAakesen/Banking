@@ -865,6 +865,42 @@ def private_path_guard() -> str:
             '/home/Banking/releases/.schema-preflight; do test ! -L "$path" || exit 1; done')
 
 
+# Read-only and always exits 0. Emits only byte counts and fixed paths, never file contents or environment values.
+STORAGE_REPORT_COMMAND = (
+    "df -Pk /home/Banking/releases | tail -n 1; echo '--'; "
+    "du -sk /home/Banking/releases/* /home/Banking/releases/.schema-preflight 2>/dev/null; echo '--'; "
+    "du -sk /home/site/wwwroot /home/site/deployments /home/LogFiles /home/data 2>/dev/null; exit 0"
+)
+STORAGE_DF_LINE = re.compile(r"^\S+\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)%\s+/\S*$")
+STORAGE_DU_LINE = re.compile(r"^(\d+)\s+(/home/[A-Za-z0-9._/-]{1,200})$")
+
+
+def release_storage_report(token: str, evidence_dir: Path) -> dict[str, Any]:
+    """Best-effort disk evidence so an unexplained staging failure can be diagnosed. Never blocks or authorizes."""
+    report: dict[str, Any] = {"available": False}
+    try:
+        output = remote_command(token, STORAGE_REPORT_COMMAND)
+    except ReleaseError:
+        output = ""
+    entries: list[dict[str, Any]] = []
+    for line in output.splitlines()[:200]:
+        line = line.strip()
+        disk = STORAGE_DF_LINE.match(line)
+        usage = STORAGE_DU_LINE.match(line)
+        if disk:
+            total, used, free, percent = (int(value) for value in disk.groups())
+            report.update(available=True, diskTotalKiB=total, diskUsedKiB=used, diskFreeKiB=free, diskUsedPercent=percent)
+        elif usage and len(entries) < 60:
+            entries.append({"path": usage.group(2), "kiB": int(usage.group(1))})
+    report["folders"] = entries
+    try:
+        private_json(evidence_dir / "storage-report.json", report)
+    except OSError:
+        pass
+    print(json.dumps({"event": "release-storage-report", **report}, sort_keys=True))
+    return report
+
+
 def private_json(path: Path, value: dict[str, Any]) -> None:
     # Write-once receipt is durable before asynchronous submission. No secrets are accepted.
     data = (json.dumps(value, sort_keys=True, indent=2) + "\n").encode()
@@ -1020,7 +1056,9 @@ def diagnose_schema(args: argparse.Namespace) -> dict[str, Any]:
         "artifactDigest": args.artifact_digest,
         "executionTransport": "scm-exec-array", "publishes": False, "migrations": False,
     })
-    return stage_and_verify_pension_schema(access_token(), package, source_sha,
+    token = access_token()
+    release_storage_report(token, evidence_dir)
+    return stage_and_verify_pension_schema(token, package, source_sha,
                                            manifest["archive"]["sha256"], evidence_dir)
 
 
