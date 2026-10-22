@@ -103,4 +103,76 @@ public sealed class ProductDemoTests
         }
         finally { await app.Cleanup(); }
     }
+
+    [Theory]
+    [InlineData(2026, 10, 22)]
+    [InlineData(2027, 3, 9)]
+    [InlineData(2028, 1, 31)]
+    public async Task Product_demo_history_follows_the_clock_and_keeps_every_period_filter_populated(int year, int month, int day)
+    {
+        var today = new DateOnly(year, month, day);
+        var provider = new ProductDemoProvider(new FixedClock(new DateTimeOffset(year, month, day, 12, 0, 0, TimeSpan.Zero)));
+        var session = await provider.Complete(ProductDemoProvider.SessionId, default);
+        Assert.Equal(new DateTimeOffset(year, month, day, 12, 0, 0, TimeSpan.Zero) + ProductDemoProvider.ConsentValidity, session.ValidUntil);
+        var rows = new List<SourceTransaction>(); string? cursor = null;
+        do
+        {
+            var page = await provider.Transactions(ProductDemoProvider.SessionId, "everyday", true, null, today, cursor, default);
+            rows.AddRange(page.Items); cursor = page.Cursor;
+        } while (cursor is not null);
+        var booked = rows.Where(x => x.Status == "BOOK").ToList();
+        Assert.All(booked, x => Assert.True(x.BookingDate <= today));
+        Assert.Contains(booked, x => x.BookingDate >= today.AddDays(-7));
+        Assert.True(booked.Count(x => x.BookingDate >= today.AddDays(-30)) >= 20);
+        Assert.Contains(booked, x => x.BookingDate <= today.AddYears(-1));
+        var pending = Assert.Single(rows, x => x.Status == "PDNG");
+        Assert.Null(pending.BookingDate); Assert.Equal(today, pending.ValueDate);
+        var balances = await provider.Balances(ProductDemoProvider.SessionId, "everyday", default);
+        Assert.Equal(12000m + booked.Sum(x => x.Amount), balances.Single(x => x.Type == "ITBD").Amount);
+        Assert.All(balances, x => Assert.Equal(new DateTimeOffset(year, month, day, 12, 0, 0, TimeSpan.Zero), x.BankTime));
+    }
+
+    [Fact]
+    public async Task Demo_connection_validity_rolls_forward_so_synthetic_history_never_freezes()
+    {
+        await using var app = new BackendFactory(secondWorkspace: true);
+        try
+        {
+            var now = DateTimeOffset.UtcNow; var renewed = now + ProductDemoProvider.ConsentValidity;
+            await app.InScope(async s =>
+            {
+                var db = s.GetRequiredService<BankingDb>();
+                db.Connections.AddRange(
+                    new Connection { Provider = "product-demo", Bank = "Expiring", IsDemo = true, ValidUntil = now.AddDays(10) },
+                    new Connection { Provider = "product-demo", Bank = "Just lapsed", IsDemo = true, ValidUntil = now.AddMinutes(-5) },
+                    new Connection { Provider = "product-demo", Bank = "Fresh", IsDemo = true, ValidUntil = now.AddDays(100) },
+                    new Connection { Provider = "product-demo", Bank = "Disconnected", IsDemo = true, Status = "Disconnected", ValidUntil = now.AddDays(1) },
+                    new Connection { Provider = "enable-banking", Bank = "Other provider", IsDemo = true, ValidUntil = now.AddDays(10) });
+                await db.SaveChangesAsync();
+                await SyncWorker.RenewDemoConsent(db, now, default);
+                db.ChangeTracker.Clear();
+                var rows = await db.Connections.AsNoTracking().ToDictionaryAsync(x => x.Bank);
+                Assert.InRange((rows["Expiring"].ValidUntil - renewed).Duration(), TimeSpan.Zero, TimeSpan.FromSeconds(1));
+                Assert.InRange((rows["Just lapsed"].ValidUntil - renewed).Duration(), TimeSpan.Zero, TimeSpan.FromSeconds(1));
+                Assert.InRange((rows["Fresh"].ValidUntil - now.AddDays(100)).Duration(), TimeSpan.Zero, TimeSpan.FromSeconds(1));
+                Assert.InRange((rows["Disconnected"].ValidUntil - now.AddDays(1)).Duration(), TimeSpan.Zero, TimeSpan.FromSeconds(1));
+                Assert.InRange((rows["Other provider"].ValidUntil - now.AddDays(10)).Duration(), TimeSpan.Zero, TimeSpan.FromSeconds(1));
+            });
+            await app.InScope(async s =>
+            {
+                var db = s.GetRequiredService<BankingDb>();
+                db.Connections.Add(new Connection { Provider = "enable-banking", Bank = "Private bank", IsDemo = false, ValidUntil = now.AddDays(5) });
+                await db.SaveChangesAsync();
+                await SyncWorker.RenewDemoConsent(db, now, default);
+                db.ChangeTracker.Clear();
+                Assert.InRange((await db.Connections.AsNoTracking().SingleAsync()).ValidUntil - now.AddDays(5), TimeSpan.FromSeconds(-1), TimeSpan.FromSeconds(1));
+            }, "Live");
+        }
+        finally { await app.Cleanup(); }
+    }
+
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
 }

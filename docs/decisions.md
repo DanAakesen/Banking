@@ -216,3 +216,11 @@ Confirmed by Dan: "Im not going to subscribe for that". Banking stays on Saxo's 
 - The label rule is unchanged: zero delay reads "No reported delay", never "Real-time"; a missing delay is unknown.
 
 Evidence: Dan's reply on 29 September 2026 at 12:49, relayed from the "Fix errors" session, after Saxo's help page described the real-time path: a paid subscription plus an upgraded API session, with real-time data delivered to one session at a time. This supersedes the open real-time item in [Saxo market data](saxo-market-data.md). A future change of mind would need a new decision, including the Demo licensing rule. Documentation only; no code change and no deployment authorized.
+
+## 22 October 2026 — Demo history stays anchored to today
+
+Status: source change pending review and release. Requested by Dan ("updates all the demo data to make sure it is recent").
+- `ProductDemoProvider` already derives every booked row, the pending reservation and the balances from the clock at each sync. No generated date was found to be stale, so the fictional history, period filters and derived upcoming payments follow today without re-seeding.
+- The only lasting staleness risk was the stored consent: the provider sets `ValidUntil` 180 days ahead, after which the worker would mark the Demo connection `ReconnectRequired` and freeze history. `SyncWorker.RenewDemoConsent` now rolls it forward for active `product-demo` connections within 30 days of expiry. It runs only in the Demo workspace and never touches Dan's connections.
+- Not changed, deliberately: the fixed 2024-01-01 opening date and the 12 August 2026 returned car contribution (identity and the Car goal example); the explicit pension and employee-share Demo documents (content-hash idempotency); and persisted valuation/loan dates seeded by `DemoFinancialExamples`.
+- Refreshing those persisted `AsOf`/`BalanceDate` values would change stored Demo data and needs separate explicit authorization; it was not applied. New generator rows would also require a full Demo resync, because sync reads only the last 30 days, so none were added.

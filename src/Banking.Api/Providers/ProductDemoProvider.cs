@@ -9,6 +9,8 @@ public sealed class ProductDemoProvider(TimeProvider clock) : IBankProvider
     public string Name => "product-demo";
     public bool IsDemo => true;
     public const string SessionId = "fictional-household-v1";
+    // The fictional bank has no real consent; the validity only drives the sync worker's expiry check.
+    public static readonly TimeSpan ConsentValidity = TimeSpan.FromDays(180);
     public static readonly string[] Roles = ["everyday", "bills", "savings", "car", "summerhouse"];
     public static string DisplayName(string value)
     {
@@ -22,7 +24,7 @@ public sealed class ProductDemoProvider(TimeProvider clock) : IBankProvider
     public Task<BankSession> Complete(string code, CancellationToken ct)
     {
         if (code != SessionId) throw new ProviderFailure("INVALID_CODE");
-        return Task.FromResult(new BankSession(SessionId, clock.GetUtcNow().AddDays(180), Roles.Select(role =>
+        return Task.FromResult(new BankSession(SessionId, clock.GetUtcNow() + ConsentValidity, Roles.Select(role =>
             new ProviderAccount(role, "fictional-identity-" + role, DisplayName(role == "car" ? "Car savings account" : role == "summerhouse" ? "Summer house savings account" : role + " account"), "DKK",
                 ["fictional-alternate-" + role, "fictional-shared-alternative"], DemoBankDetails.Account(role))).ToList()));
     }
