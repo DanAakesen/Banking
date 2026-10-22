@@ -205,6 +205,20 @@ class MainContainerSchemaTests(unittest.TestCase):
         summary = json.loads((self.evidence / "diagnostic.json").read_text())
         self.assertEqual(summary["artifactDigest"], "d" * 64)
         self.assertEqual((summary["publishes"], summary["migrations"]), (False, False))
+        report = json.loads((self.evidence / "storage-report.json").read_text())
+        self.assertIn("folders", report)
+
+    def test_storage_report_keeps_only_byte_counts_and_survives_a_failing_command(self):
+        output = ("/dev/sda1 1000 900 100 90% /home\n--\n"
+                  "40 /home/Banking/releases/abc.zip\nSECRET=nope\n"
+                  "7 /home/Banking/releases/.schema-preflight\n")
+        with patch.object(deploy, "remote_command", return_value=output):
+            report = deploy.release_storage_report("synthetic-token", self.evidence)
+        self.assertEqual((report["available"], report["diskFreeKiB"], report["diskUsedPercent"]), (True, 100, 90))
+        self.assertEqual([entry["kiB"] for entry in report["folders"]], [40, 7])
+        self.assertNotIn("SECRET", json.dumps(report))
+        with patch.object(deploy, "remote_command", side_effect=deploy.ReleaseError("suppressed")):
+            self.assertFalse(deploy.release_storage_report("synthetic-token", self.evidence)["available"])
 
     def test_non_accepted_exec_response_never_starts_polling(self):
         original = self.request
