@@ -766,8 +766,8 @@ main.access{max-width:none;width:100%;margin:0;box-sizing:border-box}
 .scene-cards>:first-child{margin-left:auto}
 .scene-cards.is-overflowing{mask-image:linear-gradient(90deg,#000 calc(100% - 48px),transparent);-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 48px),transparent)}
 .scene-card{flex:0 0 auto;width:188px;box-sizing:border-box;scroll-snap-align:start;display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:13px 15px;margin:0;border-radius:18px;color:#fff;font:inherit;text-align:left;text-decoration:none;
-  background:linear-gradient(145deg,#ffffff30,#ffffff10 60%,#ffffff18),#0a17213d;border:1px solid #ffffff40;box-shadow:inset 0 1px 0 #ffffff4d,0 12px 32px #0000003d;
-  backdrop-filter:blur(18px) saturate(170%);-webkit-backdrop-filter:blur(18px) saturate(170%);transition:background .2s,transform .2s,border-color .2s}
+  background:linear-gradient(145deg,#ffffff30,#ffffff10 60%,#ffffff18),#0a172152;border:1px solid #ffffff40;box-shadow:inset 0 1px 0 #ffffff4d,0 12px 32px #0000003d;
+  backdrop-filter:blur(30px) saturate(170%);-webkit-backdrop-filter:blur(30px) saturate(170%);transition:background .2s,transform .2s,border-color .2s}
 :is(a,button).scene-card{cursor:pointer}
 :is(a,button).scene-card:hover{background:linear-gradient(145deg,#ffffff42,#ffffff1a 60%,#ffffff24);border-color:#ffffff66;transform:translateY(-2px)}
 :is(a,button).scene-card:focus-visible,:is(a,button).scene-lead:focus-visible{outline:2px solid #fff;outline-offset:3px}
