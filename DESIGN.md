@@ -470,7 +470,8 @@ Implementation:
 - Overflowing glass-card rows use shared content-relative coordinates for More, advance to the clipped card and wrap at the end. Recomposition preserves scroll position; phones keep native horizontal swiping.
 - Budgets re-composes when its summary changes.
 - Markets search lookups resolve outside its workspace root.
-- The glass is always light-on-dark because the photo is theme-independent.
+- The glass is always light-on-dark because the photo is theme-independent. Glass cards blur the photo behind them at 30px with a slightly stronger dark tint, so card text stays legible over bright scenes (22 October 2026).
+- The 360 title is a two-line greeting instead of "360": "Welcome Dan / Here is your 360 finance overview" ("Hej Dan / Her er dit 360 økonomi overblik" in Danish). The route, navigation label and scenic-header behaviour keep the name 360 (owner request, 22 October 2026).
 - Reduced transparency uses solid dark surfaces.
 - Styles are in the "Composed scenic headers" block at the end of markets.css.
 

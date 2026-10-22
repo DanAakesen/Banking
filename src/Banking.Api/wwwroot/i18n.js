@@ -1,5 +1,7 @@
 export const da = {"AI workspace":"AI-arbejdsrum","Analysis":"Analyser","Memory":"Hukommelse",
 "Markets":"Markeder",
+"Welcome Dan":"Hej Dan",
+"Here is your 360 finance overview":"Her er dit 360 økonomi overblik",
 "Extra bank details will be imported at the next eligible sync.":"Ekstra bankoplysninger hentes ved næste tilladte synkronisering.",
 "Balance over time":"Saldo over tid",
 "Bank-reported booked balances":"Bogførte saldi fra banken",
